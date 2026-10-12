@@ -15,6 +15,13 @@
 
 namespace CityLife
 {
+    // Millisecond deadlines are uint32 game-time stamps, which wrap; compare by signed difference.
+    // A deadline of 0 means "none set" and is always reached.
+    inline bool MsReached(uint32 now, uint32 deadline)
+    {
+        return deadline == 0 || static_cast<int32>(now - deadline) >= 0;
+    }
+
     enum class TeamSide : uint8
     {
         Alliance = 0,
@@ -129,7 +136,6 @@ namespace CityLife
         uint32 DefaultPopulation = 0;
         uint32 ConfiguredPopulation = 0;
         uint32 MinCount = 0;
-        uint32 MaxCount = 0;
         uint32 Priority = 100;
         bool UseTimeScaling = true;
         uint32 ResidenceSeconds = 0;
@@ -207,13 +213,12 @@ namespace CityLife
         bool AtSpot = false;
         bool Sitting = false;
         bool AfkSetByModule = false;
+        bool DancingSetByModule = false;
         uint32 LastSayMs = 0;
 
         // Navigation, Mounting & Sink Forensics
         float LastSweepZ = 0.0f;
-        uint32 PathRefuseStreak = 0;
-        uint32 MountDecisionSpotId = 0;
-        uint32 MountAttemptMs = 0;
+        uint32 LeashGraceUntil = 0; // game seconds: no leash teleport while a walk to a new spot is under way
 
         // Living Crowd Scene State
         CrowdPhase CrowdPhaseState = CrowdPhase::Linger;
@@ -231,7 +236,7 @@ namespace CityLife
         uint64 CoreDuelArbiter = 0;
         DuelPairState DuelState = DuelPairState::None;
         uint32 DuelPartnerGuid = 0;
-        uint32 DuelStateMs = 0;
+        uint32 DuelStateMs = 0; // when a challenge this resident sent began waiting for an answer
         uint32 DuelCooldownUntilMs = 0;
         bool DuelInitiator = false;
         float DuelMeetX = 0.0f;

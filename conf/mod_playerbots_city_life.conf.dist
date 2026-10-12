@@ -12,7 +12,9 @@ CityLife.Enable = 1
 # Log detailed debug information regarding bot allocation and movements.
 CityLife.Debug = 0
 
-# Wait for random bots to connect before assigning city residents (in seconds).
+# Wait for random bots to connect before assigning city residents (in seconds). Raised to
+# Playerbots.DisabledWithoutRealPlayerLoginDelay when that is longer. Applies at worldserver start
+# only: .reload config does not pause residents that are already running.
 CityLife.StartupDelaySeconds = 90
 
 # Population and behavior management interval (in seconds).
@@ -60,21 +62,12 @@ CityLife.Population.BaselinePercent = 20
 CityLife.Population.BurstGraceSeconds = 180
 
 # Maximum number of bot borrows or releases executed per tick to prevent CPU spikes.
+# A release still waiting after 30 seconds is completed at once (bot restored, and sent home
+# when CityLife.Bots.ReturnWhenReleased is on).
 CityLife.Population.MaxChangesPerTick = 3
 
-###################################################################################################
-# Compatibility & Coexistence with mod-playerbots-pvp-life
-###################################################################################################
-
-# Master switch for cross-module coexistence with mod-playerbots-pvp-life.
-# Enables mutual anti-stealing reservation checks and system presence flags.
-# Default: 1 (Enabled)
-CityLife.Compatibility.PvPLife.EnableHarmony = 1
-
-# When enabled, City Life consults the shared PlayerbotsLife::ReservationRegistry
-# and never borrows or moves a bot reserved by PvP Life.
-# Default: 1 (Enabled)
-CityLife.Compatibility.PvPLife.RespectReservations = 1
+# Coexistence with mod-hearthside-pvp needs no setting: City Life always consults the shared
+# reservation registry and never borrows or moves a bot another Life module holds.
 
 ###################################################################################################
 # Bot Selection and Safety Settings
@@ -83,7 +76,9 @@ CityLife.Compatibility.PvPLife.RespectReservations = 1
 # Read random bot account prefix and login delay settings from mod-playerbots.
 CityLife.Bots.UsePlayerbotConfig = 1
 
-# "auto" uses the value of AiPlayerbot.RandomBotAccountPrefix.
+# "auto" uses the value of Playerbots.RandomBotAccountPrefix (AiPlayerbot.RandomBotAccountPrefix as a fallback).
+# Accounts matched by the prefix or the range below count as bot accounts everywhere City Life tells
+# bots from real players.
 CityLife.Bots.AccountPrefix = "auto"
 
 # Optionally restrict the account ID range. If both values are 0, no restriction is applied.
@@ -94,6 +89,15 @@ CityLife.Bots.AccountMax = 0
 # Set to 0 to enable dynamic census scaling (50% of live bots, bounded 100-1500).
 # Tuned to 500 for optimal memory footprint and query performance.
 CityLife.Bots.QueryLimit = 500
+
+# mod-hearthside-chat archetypes (comma-separated enum names, e.g. "CASUAL,SOCIALITE,TRADER")
+# City Life may borrow. A bot's archetype is fixed by its GUID, so this decides which personalities
+# populate the cities. Empty = every archetype. A list naming no known archetype borrows no bot
+# (logged as an error). Ignored, with a warning, when mod-hearthside-chat is not in the build.
+# Applied when a bot is borrowed: residents already in the cities stay until released.
+# Names: RAIDER_SERIOUS RAIDER_CASUAL PVP_SERIOUS PVP_CASUAL TRADER CASUAL GRUMPY_VETERAN MENTOR
+#        YOUNG_APPRENTICE SOCIALITE TROLL_MILD TROLL_AGGRESSIVE
+CityLife.Bots.Archetypes = ""
 
 # Exclude bots that are currently in a player or bot group.
 CityLife.Bots.SkipGrouped = 1
@@ -132,11 +136,12 @@ CityLife.Behaviour.RelocateMaxSeconds = 600
 # outlying residential/crafting quarters.
 CityLife.AlternatingDistricts.Enable = 1
 
-# Leash radius (in yards). Bots displaced further are returned to their assigned location.
+# Leash radius (in yards). Bots displaced further are returned to their assigned location
+# (not while they are still walking to a newly chosen spot).
 CityLife.Behaviour.LeashRadius = 35
 
-CityLife.Behaviour.Emotes = 1
-CityLife.Behaviour.EmoteChancePct = 35
+# Interval range (in seconds, 30 to 86400) between random emotes of residents whose activity is a
+# random emote (CityLife.Activities.RandomEmotes.Enable).
 CityLife.Behaviour.EmoteMinSeconds = 120
 CityLife.Behaviour.EmoteMaxSeconds = 360
 
@@ -148,8 +153,9 @@ CityLife.Behaviour.StaticServiceChancePct = 80
 CityLife.Behaviour.StaticServiceHubs = "Stormwind,Orgrimmar"
 CityLife.Behaviour.StaticServiceCategories = "auction,bank"
 
-# Non-combat strategy string applied to resident bots.
-CityLife.Strategies.NonCombat = "+stay,-follow,-passive,-grind,-rpg,-travel,-duel,-pvp"
+# Non-combat strategy string applied to resident bots. Keep "-new rpg": with
+# Playerbots.EnableNewRpgStrategy on, it walks residents off to an innkeeper/flight master.
+CityLife.Strategies.NonCombat = "+stay,-follow,-passive,-grind,-rpg,-new rpg,-travel,-duel,-pvp"
 
 ###################################################################################################
 # Activity Switches (Independent On/Off Controls)
@@ -179,8 +185,8 @@ CityLife.Activities.AFK.Enable = 1
 # Living Crowd Scenes (Capital Bank & Auction House Squares)
 ###################################################################################################
 
-# Enable living-crowd scenes at Stormwind Trade District and Orgrimmar Valley of Strength.
-# Set to 0 by default for completely silent out-of-the-box operation; enable as desired.
+# Enable living-crowd scenes at capital bank and auction house spots (lingering, wandering,
+# AFK flags). Crowd conversations also need CityLife.Chat.ScriptedConversations, which is off.
 CityLife.Crowd.Enable = 1
 
 # Real-player proximity radius (in yards). Crowd logic wakes when a player enters this range.
@@ -197,16 +203,23 @@ CityLife.Crowd.AfkMaxSec = 180
 # Duelling Subsystem (Gate and Goldshire Duel Rings)
 ###################################################################################################
 
-# Cooldown between duels per bot (in seconds).
+# Cooldown between duels per bot (in seconds, at most 86400).
 CityLife.Duels.CooldownSec = 45
 
-# Allow real players to challenge city duel bots.
+# How long (in seconds, at most 86400) a real player is left alone after a bot challenged them.
+# Shared with mod-hearthside-pvp: a player challenged by either module is not challenged by the
+# other until it expires. Default matches PvP Life's PvPLife.Duel.PlayerChallengeCooldownSeconds.
+CityLife.Duels.RealPlayerCooldownSec = 900
+
+# Allow real players to challenge city residents. When 0, a resident declines a player's challenge.
 CityLife.Duels.AllowPlayerChallenge = 1
 
 # Allow bots to initiate duel challenges directed at real players within duel spots.
 # When enabled, bots will issue challenges to nearby non-GM real players (subject to
 # cross-module rate limiting and PlayerbotsLife challenge cooldowns). Real players with GM
-# privileges (security > SEC_PLAYER) are strictly shielded.
+# privileges (security > SEC_PLAYER) are strictly shielded, as are players who are dead,
+# mounted, in a vehicle or flight, teleporting, AFK/DND or trading. An unanswered challenge is
+# withdrawn after 30 seconds.
 # Default: 1 (Enabled)
 CityLife.Duels.BotChallengeRealPlayer = 1
 
@@ -232,9 +245,6 @@ CityLife.Movement.MountBetweenPoiChance = 90
 # Enable sink forensics logging when a bot descends rapidly through floors.
 CityLife.Movement.SinkForensics = 1
 
-# Maximum consecutive path rejections before triggering safe anchor recovery.
-CityLife.Movement.MaxPathRefuseStreak = 3
-
 ###################################################################################################
 # Chat, Economy & Interaction Safeguards
 ###################################################################################################
@@ -258,7 +268,7 @@ CityLife.Interactions.PlayerTrading = 0
 CityLife.Interactions.BuyFood = 0
 
 # Shield achievements and criteria progress while bots are actively engaged in
-# synthetic roleplay activities (duels, crowd scenes, tavern drinking, dancing).
+# synthetic roleplay duels (residents whose activity is a gate/Goldshire duel).
 # When enabled (1), suppression applies only during synthetic actions and strictly
 # shields real human players and human-controlled SelfBots from suppression.
 # Default: 0 (Disabled - borrowed bots retain normal achievement progression)
@@ -323,7 +333,9 @@ CityLife.Hub.OrgrimmarGate.Enable = 1
 CityLife.Hub.OrgrimmarGate.Population = 10
 CityLife.Hub.OrgrimmarGate.Min = 2
 
-# Wintergrasp starting camps (level 75-80 bracket, balanced so high-level bots are not monopolized)
+# Wintergrasp starting camps (level 70-80 bracket in the bundled SQL, balanced so high-level bots are
+# not monopolized). While the Wintergrasp battle is running these hubs take no residents and the
+# ones there are released.
 CityLife.Hub.WintergraspAlliance.Enable = 1
 CityLife.Hub.WintergraspAlliance.Population = 12
 CityLife.Hub.WintergraspAlliance.Min = 2

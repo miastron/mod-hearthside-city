@@ -12,6 +12,7 @@
 #include "QueryCallback.h"
 #include "Transaction.h"
 
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,17 @@ class Player;
 
 namespace CityLife
 {
+    // A playerbot's session, by account, whether or not mod-playerbots has
+    // attached its AI yet: it attaches after OnPlayerLogin, so ::IsRealPlayer()
+    // alone reads every bot logging in as a human. Stands in for the
+    // WorldSession::IsBot() this module was written against, which this core
+    // does not have. Also true for accounts matched by CityLife.Bots.AccountPrefix/Min/Max.
+    bool IsBotSession(Player const* player);
+
+    // A person at a game client: a session that is not a bot account and has no
+    // PlayerbotAI attached. A player-owned alt bot is therefore neither borrowable nor human.
+    bool IsHumanPlayer(Player* player);
+
     class Manager
     {
     public:
@@ -39,6 +51,10 @@ namespace CityLife
         void OnPlayerLogin(Player* player);
         void OnPlayerLogout(Player* player);
         void DisengageResident(uint32 guidLow);
+        // PlayerScript/GroupScript hooks can fire on map-update threads (a bot's own AI logs it out
+        // or accepts an invite from inside Player::Update), concurrently with other hooks that read
+        // the resident list. They queue the GUID here; Update() disengages it on the world thread.
+        void QueueDisengage(uint32 guidLow);
         bool IsResident(uint32 guidLow) const;
 
         // Activity Helper Methods
@@ -58,6 +74,9 @@ namespace CityLife
         bool IsResidentInSyntheticActivity(uint32 guidLow) const;
         bool ValidateResidentAction(Player* bot, Resident const& resident) const;
         bool IsHumanControlled(Player* player) const;
+        // A human a resident may send a duel challenge to right now (checked at pick and at cast time).
+        bool CanChallengeHuman(Player* bot, Player* target, float maxDistance) const;
+        bool IsConfiguredBotAccount(uint32 accountId) const;
 
     private:
         Manager() = default;
@@ -69,9 +88,11 @@ namespace CityLife
 
         TeamSide TeamForRace(uint8 race) const;
         Player* FindPlayer(uint32 guidLow) const;
-        bool IsConfiguredBotAccount(uint32 accountId);
         void RefreshAccountCache();
         bool IsCandidate(Player* player);
+        // True if this bot's mod-hearthside-chat archetype is on CityLife.Bots.Archetypes
+        // (or that list is empty, or the chat module is not in the build).
+        bool FitsArchetype(uint32 guidLow);
         bool IsResidentUsable(Player* player, bool allowOwnedDuel = false) const;
         uint32 GetLiveWorldBotCount(bool forceRefresh = false) const;
         std::vector<BotCandidate> LoadCandidates(Hub const& hub, uint32 poolCount = 0);
@@ -83,11 +104,12 @@ namespace CityLife
         Spot const* ChooseSpot(Hub const& hub, uint32 ignoredSpotId = 0, bool filterByDistrict = false, bool targetHubDistrict = false, Player* botForPathCheck = nullptr) const;
         bool UsesAlternatingHubRoute(std::string const& hubName) const;
         bool IsHubDistrict(std::string const& hubName, std::string const& district) const;
-        bool IsOutlyingDistrict(std::string const& hubName, std::string const& district) const;
         CitizenRole DetermineRole(Hub const& hub, Spot const& spot, BotCandidate const& candidate) const;
         CitizenActivity ChooseInitialActivity(CitizenRole role, Spot const& spot) const;
 
         uint32 CountResidents(uint32 hubId) const;
+        // Wintergrasp hubs sit in the battlefield zone; while its battle runs they take no residents.
+        bool IsWintergraspWarHub(Hub const& hub) const;
         uint32 TargetPopulation(Hub const& hub) const;
         uint32 CurrentTimeMultiplier() const;
         uint32 CalculateTotalBudget(uint32 eligiblePoolCount) const;
@@ -105,6 +127,8 @@ namespace CityLife
         void MaintainResidents();
         void RelocateResident(Resident& resident, Hub const& hub);
         void AssignSpot(Resident& resident, Hub const& hub, Spot const& spot, bool allowStationary);
+        void SnapTargetToGround(Player* player, Resident& resident, Hub const& hub, Spot const& spot) const;
+        void MaintainDuels();
 
         void ApplyCityStrategies(Player* player, Resident& resident) const;
         void SetStayPosition(Player* player, Resident& resident) const;
@@ -121,11 +145,13 @@ namespace CityLife
 
         bool _enable = true;
         bool _databaseReady = false;
+        bool _configLoaded = false;
         bool _debug = false;
         uint32 _startupDelaySeconds = 90;
         uint32 _tickSeconds = 10;
         uint32 _startupElapsedMs = 0;
         uint32 _timerMs = 0;
+        uint32 _duelTimerMs = 0;
 
         // Population Budget & Demand Profiles
         BudgetMode _budgetMode = BudgetMode::Percentage;
@@ -138,16 +164,15 @@ namespace CityLife
         uint32 _burstGraceSeconds = 180;
         uint32 _maxChangesPerTick = 3;
 
-        // Compatibility & Anti-Stealing Barrier
-        bool _compatPvPLifeHarmony = true;
-        bool _compatPvPLifeRespectReservations = true;
-
         // Candidate Filters & Safety
         bool _usePlayerbotConfig = true;
         std::string _botAccountPrefix = "auto";
         uint32 _botAccountMin = 0;
         uint32 _botAccountMax = 0;
         uint32 _botQueryLimit = 500;
+        std::string _archetypes;           // CityLife.Bots.Archetypes, comma-separated mod-hearthside-chat enum names
+        bool _archetypeFilter = false;     // the list is set and the chat module is in the build
+        uint32 _archetypeMask = 0;         // with _archetypeFilter, 0 = no bot fits
         bool _skipGroupedBots = true;
         bool _respectPlayerbotActivity = false;
         bool _returnBots = true;
@@ -164,8 +189,6 @@ namespace CityLife
         uint32 _relocateMinSeconds = 180;
         uint32 _relocateMaxSeconds = 600;
         uint32 _leashRadius = 35;
-        bool _emotes = true;
-        uint32 _emoteChance = 35;
         uint32 _emoteMinSeconds = 120;
         uint32 _emoteMaxSeconds = 360;
         uint32 _serviceSpotWeightMultiplier = 250;
@@ -204,6 +227,7 @@ namespace CityLife
 
         // Duels Settings
         uint32 _duelCooldownSec = 45;
+        uint32 _duelRealPlayerCooldownSec = 900;
         bool _duelAllowPlayerChallenge = true;
         bool _duelBotChallengeRealPlayer = true;
         float _duelMaxDistance = 40.0f;
@@ -211,7 +235,6 @@ namespace CityLife
         // Movement & Sink Settings
         uint32 _mountBetweenPoiChance = 90;
         bool _sinkForensics = true;
-        uint32 _maxPathRefuseStreak = 3;
 
         // Chat & Interaction Settings
         bool _chatScriptedConversations = true;
@@ -220,10 +243,11 @@ namespace CityLife
         uint32 _chatRandomSayChance = 0;
         uint32 _chatSayCooldownSec = 30;
         bool _enableInteractions = false;
+        bool _enableBuyFood = false;
         bool _enablePlayerTrading = false;
         bool _blockAchievements = false;
-        uint32 _suppressedAchievements = 0;
-        uint32 _suppressedCriteria = 0;
+        std::atomic<uint32> _suppressedAchievements{0}; // bumped from map-update threads
+        std::atomic<uint32> _suppressedCriteria{0};
 
         // Advanced Micro-Behaviors (Ported from mod-city-bots)
         bool _alternatingDistricts = true;
@@ -237,13 +261,16 @@ namespace CityLife
             Resident Actor;
             bool ReturnHome = false;
             uint32 ReleaseStartedAt = 0;
-            uint32 Attempts = 0;
         };
         std::vector<ReleasingResident> _releasingResidents;
         std::vector<Resident> _residents;
         std::unordered_map<uint32, uint32> _hubResidentCounts;
         std::unordered_map<uint32, bool> _botAccountCache;
+        mutable std::mutex _botAccountMutex; // IsBotSession reads the cache from map-update threads
         mutable std::mutex _hubRealPlayerMutex;
+        void ProcessQueuedDisengages();
+        std::mutex _queuedDisengageMutex;
+        std::vector<uint32> _queuedDisengages;
         mutable std::unordered_map<uint32, uint32> _hubLastRealPlayerTime; // HubId -> timestamp
         mutable std::unordered_map<uint32, std::vector<uint32>> _zoneToHubIds; // ZoneId -> HubIds (thread-safe lookup)
         mutable uint32 _cachedLiveBotCount = 0;

@@ -1,0 +1,113 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+`mod-hearthside-city` is an AzerothCore (WotLK 3.3.5a) worldserver module that borrows idle
+random playerbots from `mod-playerbots` and parks them in cities as "residents" (wandering
+districts, standing at AH/bank/mail spots, taverns, fishing, gate duels). It is a fork of upstream
+`mod-playerbots-city-life` by iCore, adapted to this workspace's core
+(`../azerothcore-wotlk-pb`) and `../mod-playerbots`. Sibling repo `../mod-hearthside-pvp` is the
+matching fork of `mod-playerbots-pvp-life`; the two coexist through a shared reservation registry
+(below).
+
+Upstream names were deliberately kept everywhere except the loader: config file
+`mod_playerbots_city_life.conf`, keys `CityLife.*`, GM command `.citylife`, log line
+`>> Loaded mod-playerbots-city-life`, `module-info.json`. Don't "finish the rename" without being
+asked: operators' existing configs depend on those names.
+
+## Build
+
+There is no standalone build and no test suite. The module compiles into AzerothCore's `modules`
+target when placed at `azerothcore-wotlk/modules/mod-hearthside-city/` (`CMakeLists.txt` just
+calls `AC_ADD_SCRIPT` on `src/` and `AC_ADD_CONFIG_FILE` on the `.conf.dist`). Compiling,
+restarting the worldserver and anything touching MySQL happen on the test realm; see
+`../mod-hearthside-chat/CLAUDE.md` for the realm and the local MSVC toolchain notes. Label any
+runtime claim you could not exercise as unverified.
+
+- **The loader function name is derived from the directory name.** AzerothCore calls
+  `Add<dir_name_with_underscores>Scripts()`, so `src/playerbots_city_life_loader.cpp` must define
+  `Addmod_hearthside_cityScripts()`. Renaming the directory means renaming this function.
+- Adding a new `.cpp` forces a CMake re-run (glob) and a full rebuild of `modules` on the realm;
+  a new header doesn't.
+
+## Core API drift (this core vs. what upstream was written against)
+
+Most local diffs from upstream are adaptations to these. Use the local forms:
+
+- No `WorldSession::IsBot()`. Use `CityLife::IsBotSession(player)` (`CityLifeMgr.cpp`), which
+  checks the random-bot account list / addclass bots. `::IsRealPlayer()` alone is wrong during
+  login: mod-playerbots attaches its AI *after* `OnPlayerLogin`, so every bot looks human then.
+- `Acore::StringFormat(...)`, not `Acore::String::Format(...)`.
+- `GameTime::GetGameTime()` / `GetGameTimeMS()` return durations: call `.count()`.
+- mod-playerbots renamed config keys `AiPlayerbot.*` → `Playerbots.*` and `PlayerbotAIConfig`
+  members to UpperCamelCase (its PR #2854). Read its current headers before touching either;
+  `ImportPlayerbotDefaults()` reads the new key with the old one as fallback.
+
+## Architecture
+
+- **Entry points** (`mod_playerbots_city_life.cpp`): `AddCityLifeScripts()` checks the registry
+  protocol and registers the telemetry bridge (the active-module flag is set by `LoadConfig` only
+  while the module is enabled and its tables exist), a `WorldScript` (config load → `LoadConfig`, `OnUpdate` → `Update`,
+  shutdown), a `PlayerScript` (login/logout/zone tracking of real players, trade blocking,
+  achievement suppression for residents in duels), a `GroupScript` (a resident joining a group
+  with a real player is disengaged at once) and the `.citylife` `CommandScript`. All logic lives
+  in the `CityLife::Manager` singleton (`sCityLifeMgr`).
+- **`CityLifeMgr.cpp`** (~2.6k lines) is the whole lifecycle. `Update()` pumps async DB callbacks
+  and registry arbitration every frame, waits out a startup delay (at least mod-playerbots'
+  `DisabledWithoutRealPlayerLoginDelay`), then every `_tickSeconds` runs `MaintainPopulation()`
+  (budget/time-of-day/demand → per-hub targets → candidate scan → admission requests) and
+  `MaintainResidents()` (per-resident activity state machine, relocation, emotes, lease refresh).
+  Changes per tick are capped by `_maxChangesPerTick`.
+- **Admission is two-phase**: `MaintainPopulation` queues an admission request with the shared
+  registry; `ResolveAdmissionRequests` grants a *Provisional* lease; `ProcessAdmissionGrants` takes
+  the grant and `AdmitResident` promotes it to *Active*, snapshots the bot's original position, and
+  applies city strategies (`_nonCombatStrategies`). Release is also staged
+  (`ReleaseResident` → `_releasingResidents` → `ProcessReleasingResidents`) so the bot's
+  strategies/position are restored before the lease is dropped. Every resident action should
+  re-validate its lease (`ValidateActiveLease` / `ValidateResidentAction`); a lost lease means
+  another module or a real player now owns the bot.
+- **`LifeBotReservation.h`**: header-only, process-wide registry (owners, leases with generations,
+  admission arbitration, duel staging slots on a 20yd lattice, real-player challenge cooldowns)
+  shared with `mod-hearthside-pvp`/artisans. Because both modules compile into one binary, the
+  copies must stay **byte-compatible**; `AddCityLifeScripts()` calls `CheckProtocolVersion()`, which
+  logs an error when another Life module registered a different `LIFE_BOT_RESERVATION_PROTOCOL_VERSION`.
+  Change it in both repos together and bump the version.
+- **`LifeTelemetryBridge.h`**: header-only addon telemetry (`LIFE335\t...` addon whispers,
+  WELCOME/CAPACITY frames) for a client addon; also shared with the sibling modules, registered once
+  via the registry's `TelemetryBridgeRegistered` flag.
+- **`CityLifeActivities.*`** (crowd chat/AFK, duels: meet point, ranged vs. melee spacing,
+  spectators), **`CityLifeMovement.*`** (pathing validation, water/canal avoidance, mounting, sink
+  detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums), `CityLifeDialogues.h`
+  and `CityLifePopulation.h` (static data tables).
+- **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
+  using `../mod-hearthside-chat`'s GUID-fixed personality. `CityLifeMgr.cpp` picks it up with
+  `__has_include("hs_archetype.h")` and calls `Hs_ArchetypeForBot` / `Hs_ArchetypeMaskForNames`;
+  without that module every bot fits. Changing those signatures in the chat module breaks this build.
+
+## Data and SQL
+
+- Hubs and spots live in the WORLD tables `city_life_hub` / `city_life_spot`, loaded by
+  `LoadData()`. Config values override `default_population` at runtime. GM `.citylife hub|spot`
+  edits go through `QueueMutation()` (async transaction, max 32 queued) and trigger a reload.
+- `data/sql/db-world/base/city_life.sql` is the single schema + seed file, applied by AzerothCore's
+  updater (only `db-world`-style directories are scanned). It is written to be **re-applied**: the
+  updater stores each file's SHA1 and re-runs it whenever it changes (comment edits included), so it
+  must stay idempotent: `CREATE TABLE IF NOT EXISTS`, the `AddColumnUnlessExists_CityLife`
+  procedure for new columns, `INSERT IGNORE` for seeds so operator-edited rows survive. Upstream's
+  `manual/` + `updates/` scripts were folded into it; add new columns/seeds there the same way
+  rather than adding an `updates/` file.
+- `data/sql/manual/2026_10_10_02_city_life_guard_ambience.sql` is optional guard SmartAI flavor,
+  applied by hand only (`manual/` is not scanned).
+- `VerifyDatabase()` only checks that both tables exist; its error text points at the updater and
+  `Updates.EnableDatabases`. `.citylife spot delete` disables a row instead of deleting it, so a
+  re-applied seed does not resurrect it.
+
+## Conventions
+
+- Logging uses the `module` logger with a `[CityLife]` prefix; the startup line uses `server.loading`.
+- Every new config key goes in `conf/mod_playerbots_city_life.conf.dist` with a comment, and is read
+  in `Manager::LoadConfig()` (re-run on `.reload config` via `OnAfterConfigLoad`).
+- Keep the README's invariants: borrow bots as-is (no level/talent/stat changes), never touch real
+  players or player-owned bots, exempt GMs from challenges/whispers, chatter defaults off.

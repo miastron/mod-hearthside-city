@@ -24,7 +24,7 @@ namespace CityLife
                                 bool enableAfk = true);
 
         void ExecuteDuel(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                         uint32 duelCooldownSec, float duelMaxDist, bool meetingPointEnabled = true);
+                         uint32 duelCooldownSec, uint32 realPlayerCooldownSec, float duelMaxDist, bool meetingPointEnabled = true);
 
         void ExecuteDuelSpectator(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
@@ -37,8 +37,10 @@ namespace CityLife
         bool IsMeleeDueler(Player* bot);
         bool MoveToRangedDuelDistance(Player* bot, Resident& resident, Player* opponent,
                                       Spot const* anchorSpot, float leashRadius);
+        // acceptPlayerChallenges = CityLife.Duels.AllowPlayerChallenge: a challenge from a human is
+        // accepted only when it is set; one this module did not arrange is otherwise declined.
         void DriveActiveDuel(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                             float leashRadius, bool tacticalRange);
+                             float leashRadius, bool tacticalRange, bool acceptPlayerChallenges);
         void CancelCityDuel(Player* bot, char const* reason);
 
         void ExecuteFishing(Resident& resident, Player* bot, Hub const& hub, uint32 now);
@@ -66,6 +68,7 @@ namespace CityLife
         // Safe State Cleaners
         void CrowdClearAfk(Player* bot);
         void CrowdReleaseChat(Player* bot, Resident& resident);
+        void StopDance(Player* bot, Resident& resident);
         Player* FindNearbyRealPlayer(Player* bot, float radius);
     }
 }

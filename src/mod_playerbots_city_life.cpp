@@ -87,11 +87,7 @@ public:
             bool targetIsResident = target && sCityLifeMgr.IsResident(target->GetGUID().GetCounter());
             bool playerIsResident = player && sCityLifeMgr.IsResident(player->GetGUID().GetCounter());
             if (targetIsResident || playerIsResident)
-            {
-                if (targetIsResident)
-                    target->Whisper("Trading is disabled.", LANG_UNIVERSAL, player);
-                return false;
-            }
+                return false; // silently: residents say nothing unless a chat option is on
         }
         return true;
     }
@@ -118,11 +114,8 @@ public:
         if (::IsRealPlayer(player))
             return true;
 
-        if (PlayerbotAI* ai = GET_PLAYERBOT_AI(player))
-        {
-            if (ai->IsSelfBot())
-                return true;
-        }
+        if (::IsSelfBot(player))
+            return true;
 
         uint32 const guidLow = player->GetGUID().GetCounter();
         if (sCityLifeMgr.IsResidentInSyntheticActivity(guidLow))
@@ -143,11 +136,8 @@ public:
         if (::IsRealPlayer(player))
             return true;
 
-        if (PlayerbotAI* ai = GET_PLAYERBOT_AI(player))
-        {
-            if (ai->IsSelfBot())
-                return true;
-        }
+        if (::IsSelfBot(player))
+            return true;
 
         uint32 const guidLow = player->GetGUID().GetCounter();
         if (sCityLifeMgr.IsResidentInSyntheticActivity(guidLow))
@@ -196,8 +186,8 @@ public:
         bool hasRealPlayer = false;
         for (GroupReference const* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
         {
-            Player const* member = ref->GetSource();
-            if (member && member->GetSession() && !member->GetSession()->IsBot())
+            Player* member = ref->GetSource();
+            if (member && (CityLife::IsHumanPlayer(member) || ::IsSelfBot(member)))
             {
                 hasRealPlayer = true;
                 break;
@@ -206,20 +196,24 @@ public:
 
         if (hasRealPlayer)
         {
-            sCityLifeMgr.DisengageResident(guid.GetCounter());
+            sCityLifeMgr.QueueDisengage(guid.GetCounter());
             for (GroupReference const* ref = group->GetFirstMember(); ref; ref = ref->next())
                 if (Player* member = ref->GetSource(); member && sCityLifeMgr.IsResident(member->GetGUID().GetCounter()))
-                    sCityLifeMgr.DisengageResident(member->GetGUID().GetCounter());
+                    sCityLifeMgr.QueueDisengage(member->GetGUID().GetCounter());
         }
     }
 };
 
 void AddCityLifeScripts()
 {
-    static_assert(PlayerbotsLife::LIFE_BOT_RESERVATION_PROTOCOL_VERSION == 2026101104,
-        "City Life requires LifeBotReservation protocol version 2026101104");
+    // A static_assert here could only compare this module's copy of LifeBotReservation.h with
+    // itself; CheckProtocolVersion compares it with the copy the first registered Life module used.
+    if (!PlayerbotsLife::CheckProtocolVersion())
+        LOG_ERROR("server.loading", ">> City Life: LifeBotReservation.h protocol {} does not match {} from another Life "
+            "module. Copy one LifeBotReservation.h into every Life module and rebuild.",
+            PlayerbotsLife::LIFE_BOT_RESERVATION_PROTOCOL_VERSION, PlayerbotsLife::GetRegisteredProtocolVersion());
 
-    PlayerbotsLife::RegisterActiveModule(PlayerbotsLife::ModuleSystemFlags::MODULE_CITY_LIFE);
+    // The active-module flag is set by Manager::LoadConfig, only while City Life is enabled and its tables exist.
     PlayerbotsLife::RegisterTelemetryBridge();
     new CityLifeWorldScript();
     new CityLifePlayerScript();

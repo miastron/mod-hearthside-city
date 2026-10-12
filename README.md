@@ -43,14 +43,13 @@ City Life populates capitals, towns, and popular social hubs with configurable A
 
 ## Installation & Setup
 
-1. Place `mod-playerbots-city-life` into your `modules/` directory:
+1. Place `mod-hearthside-city` into your `modules/` directory:
    ```text
-   azerothcore-wotlk/modules/mod-playerbots-city-life
+   azerothcore-wotlk/modules/mod-hearthside-city
    ```
-2. Apply the schema and seed data to your **WORLD** database:
-   ```bash
-   mysql -u root -p acore_world < data/sql/manual/world_city_life.sql
-   ```
+2. Nothing to apply by hand: AzerothCore's updater applies `data/sql/db-world/base/city_life.sql`
+   to the **WORLD** database on the next worldserver start (`Updates.EnableDatabases` must include
+   the world database). The file is idempotent and keeps hubs/spots you have edited.
 3. Re-run CMake and rebuild AzerothCore.
 4. Copy `conf/mod_playerbots_city_life.conf.dist` to `mod_playerbots_city_life.conf` in your worldserver config directory and customize settings.
 5. Start worldserver and look for `>> Loaded mod-playerbots-city-life` in your startup log.
@@ -75,7 +74,7 @@ All administrative commands use the `.citylife` root:
 ### Status & Diagnostics
 - `.citylife status`: Displays total active residents, hub breakdowns, activity states, and borrowing budgets.
 - `.citylife compat`: Reports detected active Life modules (`CityLife`, `PvPLife`, `Artisans`) and reservation pool statistics.
-- `.citylife reload`: Reloads configuration and all hub/hotspot data from the database.
+- `.citylife reload [config|data|all]`: Reloads configuration and/or hub/hotspot data from the database. Running residents keep going; only the first start waits out `CityLife.StartupDelaySeconds`.
 
 ### Hub Management
 - `.citylife hub list`: Lists all configured city hubs and their target populations.
@@ -87,7 +86,7 @@ All administrative commands use the `.citylife` root:
 ### Hotspot Management
 - `.citylife spot list <hub>`: Lists all hotspots defined for a hub.
 - `.citylife spot add <hub> <name> <category> [weight] [radius]`: Creates or updates a hotspot at the GM's current position.
-- `.citylife spot delete <hub> <name>`: Deletes a hotspot from a hub.
+- `.citylife spot delete <hub> <name>`: Removes a hotspot from a hub. The row is disabled rather than deleted, so a re-applied `city_life.sql` does not bring a seeded spot back; `spot add` with the same name re-enables it.
 
 ---
 

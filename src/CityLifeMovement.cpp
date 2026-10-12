@@ -227,14 +227,6 @@ namespace CityLife
             return bot->GetDistance2d(spot.X, spot.Y) <= tolerance;
         }
 
-        bool IsAtCoordinates(Player* bot, uint32 mapId, float x, float y, float tolerance)
-        {
-            if (!bot || bot->GetMapId() != mapId)
-                return false;
-
-            return bot->GetDistance2d(x, y) <= tolerance;
-        }
-
         bool PathTouchesWater(Player* bot, PathGenerator const& path)
         {
             if (!bot)

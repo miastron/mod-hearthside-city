@@ -6,7 +6,7 @@
 
 void AddCityLifeScripts();
 
-void Addmod_playerbots_city_lifeScripts()
+void Addmod_hearthside_cityScripts()
 {
     AddCityLifeScripts();
 }
