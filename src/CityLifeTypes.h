@@ -1,0 +1,254 @@
+/*
+ * City Life
+ * Copyright (C) 2026 iCore
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef CITY_LIFE_TYPES_H
+#define CITY_LIFE_TYPES_H
+
+#include "Define.h"
+#include "LifeBotReservation.h"
+
+#include <string>
+#include <vector>
+
+namespace CityLife
+{
+    enum class TeamSide : uint8
+    {
+        Alliance = 0,
+        Horde = 1,
+        Any = 2
+    };
+
+    enum class CitizenRole : uint8
+    {
+        Flex = 0,
+        InnDancer = 1,
+        PlazaTalker = 2,
+        GateDuelist = 3,
+        GoldshireDuelist = 4,
+        Fisher = 5,
+        Crowd = 6
+    };
+
+    enum class CitizenActivity : uint8
+    {
+        LeaveInn = 0,
+        VisitAuctionHouse = 1,
+        VisitMailbox = 2,
+        BuyFood = 3,
+        WanderDistrict = 4,
+        SitInTavern = 5,
+        WatchDuels = 6,
+        VisitTrainer = 7,
+        DrinkInTavern = 8,
+        WalkCityWalls = 9,
+        ReturnToInn = 10,
+        ReleaseCycle = 11,
+        RandomEmote = 12,
+        FishAtDocks = 13,
+        Idle = 14,
+        Duel = 15,
+        InnDance = 16,
+        PlazaSocial = 17,
+        CrowdSocial = 18
+    };
+
+    enum class CityPoiType : uint8
+    {
+        Inn = 0,
+        AuctionHouse = 1,
+        Mailbox = 2,
+        Tavern = 3,
+        Trainer = 4,
+        Dock = 5,
+        WallPatrol = 6,
+        Plaza = 7,
+        Vendor = 8,
+        DuelRing = 9,
+        InnBed = 10,
+        Bank = 11
+    };
+
+    enum class CrowdPhase : uint8
+    {
+        Linger = 0,
+        Afk = 1,
+        WanderOut = 2,
+        WanderBack = 3
+    };
+
+    enum class BudgetMode : uint8
+    {
+        Count = 0,
+        Percentage = 1
+    };
+
+    enum class DemandMode : uint8
+    {
+        Fixed = 0,
+        Dynamic = 1,
+        Hybrid = 2
+    };
+
+    enum class DistributionMode : uint8
+    {
+        Legacy = 0,
+        Scaled = 1
+    };
+
+    struct Spot
+    {
+        uint32 Id = 0;
+        uint32 HubId = 0;
+        std::string Name;
+        std::string Category;
+        float X = 0.0f;
+        float Y = 0.0f;
+        float Z = 0.0f;
+        float O = 0.0f;
+        float Radius = 3.0f;
+        uint32 Weight = 100;
+        CityPoiType PoiType = CityPoiType::Plaza;
+        std::string District;
+        uint32 PartnerSpotId = 0;
+    };
+
+    struct Hub
+    {
+        uint32 Id = 0;
+        std::string Name;
+        bool Enabled = true;
+        TeamSide Team = TeamSide::Any;
+        uint8 MinLevel = 1;
+        uint8 MaxLevel = 80;
+        uint32 MapId = 0;
+        uint32 ZoneId = 0;
+        uint32 DefaultPopulation = 0;
+        uint32 ConfiguredPopulation = 0;
+        uint32 MinCount = 0;
+        uint32 MaxCount = 0;
+        uint32 Priority = 100;
+        bool UseTimeScaling = true;
+        uint32 ResidenceSeconds = 0;
+        bool DuelHub = false;
+        bool SocialHub = false;
+        std::vector<Spot> Spots;
+    };
+
+    struct BotCandidate
+    {
+        uint32 GuidLow = 0;
+        uint32 AccountId = 0;
+        std::string Name;
+        uint8 Level = 1;
+        uint8 Race = 0;
+        TeamSide Team = TeamSide::Any;
+    };
+
+    enum class DuelPairState : uint8
+    {
+        None = 0,
+        Rendezvous = 1,
+        Challenged = 2,
+        Countdown = 3,
+        InProgress = 4,
+        Active = 4,
+        Recovering = 5,
+        Closed = 6
+    };
+
+    struct ResidentMutationJournal
+    {
+        bool CapturedOriginalStrategies = false;
+        std::vector<std::string> OriginalNonCombatStrategies;
+        std::vector<std::string> AppliedStrategies;
+        std::vector<std::string> RemovedStrategies;
+        bool ModifiedStayPosition = false;
+        bool HadStayPosition = false;
+        float PrevStayX = 0.0f;
+        float PrevStayY = 0.0f;
+        float PrevStayZ = 0.0f;
+        uint32 PrevStayMap = 0;
+        float AppliedStayX = 0.0f;
+        float AppliedStayY = 0.0f;
+        float AppliedStayZ = 0.0f;
+        uint32 AppliedStayMap = 0;
+    };
+
+    struct Resident
+    {
+        BotCandidate Bot;
+        uint32 HubId = 0;
+        uint32 SpotId = 0;
+        uint32 TargetMap = 0;
+        uint32 OriginalMap = 0;
+        float OriginalX = 0.0f;
+        float OriginalY = 0.0f;
+        float OriginalZ = 0.0f;
+        float OriginalO = 0.0f;
+        float TargetX = 0.0f;
+        float TargetY = 0.0f;
+        float TargetZ = 0.0f;
+        float TargetO = 0.0f;
+        uint32 NextMoveAt = 0;
+        uint32 NextEmoteAtMs = 0;
+        uint32 NextReservationRefreshAt = 0;
+        uint32 ReleaseAt = 0;
+        bool Stationary = false;
+
+        // Unified Activity & Role State
+        CitizenRole Role = CitizenRole::Flex;
+        CitizenActivity Activity = CitizenActivity::Idle;
+        uint32 ActivityStartMs = 0;
+        uint32 ActivityDurationMs = 0;
+        bool AtSpot = false;
+        bool Sitting = false;
+        bool AfkSetByModule = false;
+        uint32 LastSayMs = 0;
+
+        // Navigation, Mounting & Sink Forensics
+        float LastSweepZ = 0.0f;
+        uint32 PathRefuseStreak = 0;
+        uint32 MountDecisionSpotId = 0;
+        uint32 MountAttemptMs = 0;
+
+        // Living Crowd Scene State
+        CrowdPhase CrowdPhaseState = CrowdPhase::Linger;
+        uint32 CrowdPhaseEndMs = 0;
+        uint32 CrowdHomeSpotId = 0;
+        uint32 LastCrowdChatMs = 0;
+        uint32 ChatPartnerGuid = 0;
+        uint32 ChatDeadlineMs = 0;
+        uint8 ChatLineIdx = 0;
+        int16 ChatDialogueId = -1;
+        bool ChatInitiator = false;
+
+        // Paired Duel & Tactical Combat State
+        uint64 DuelPairId = 0;
+        uint64 CoreDuelArbiter = 0;
+        DuelPairState DuelState = DuelPairState::None;
+        uint32 DuelPartnerGuid = 0;
+        uint32 DuelStateMs = 0;
+        uint32 DuelCooldownUntilMs = 0;
+        bool DuelInitiator = false;
+        float DuelMeetX = 0.0f;
+        float DuelMeetY = 0.0f;
+        float DuelMeetZ = 0.0f;
+        bool DuelMeetingSet = false;
+        uint32 DuelRendezvousDeadlineMs = 0;
+        uint32 DuelLastRepositionMs = 0;
+
+        // Alternating District Roam State
+        bool LastRoamWasHub = false;
+
+        // Tokenized Cooperation Lease & State Mutation Journal
+        PlayerbotsLife::LeaseToken Token;
+        uint32 DuelStagingSlotId = 0;
+        ResidentMutationJournal Journal;
+    };
+}
+
+#endif
