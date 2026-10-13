@@ -1465,6 +1465,10 @@ namespace CityLife
                 if (!opponent || !opponent->IsInWorld() || opponent->duel || opponent->IsInCombat() ||
                     !PlayerbotsLife::ValidateActiveLease(r.Token) || !IsResidentUsable(opponent, true))
                     continue;
+                // Both duelists awake under BotActiveAlone: one forced active (a real player's friend,
+                // say) must not walk to a rendezvous with a paused resident that will not answer.
+                if (PlayerbotAI* oppAi = GET_PLAYERBOT_AI(opponent); !oppAi || !oppAi->AllowActivity())
+                    continue;
 
                 if (opponent->GetDistance2d(centerX, centerY) > radius)
                     continue;
@@ -2044,6 +2048,13 @@ namespace CityLife
             {
                 resident.AtSpot = false;
             }
+
+            // Follow mod-playerbots' BotActiveAlone: a resident its rules have paused (no real player
+            // in range or in the zone, not in the rotating share, SmartScale) keeps its spot and its
+            // lease but starts nothing new -- no activity change, roaming or duel -- until it wakes,
+            // so a player walking up finds the residents already there and watches them come to life.
+            if (PlayerbotAI* ai = GET_PLAYERBOT_AI(player); !ai || !ai->AllowActivity())
+                continue;
 
             if (resident.AtSpot && resident.ActivityDurationMs &&
                 nowMs - resident.ActivityStartMs >= resident.ActivityDurationMs &&
