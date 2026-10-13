@@ -59,11 +59,15 @@ namespace CityLife
 
         // Activity Helper Methods
         Spot const* FindSpot(uint32 hubId, uint32 spotId) const;
+        Spot const* FindInnBedSpot(Hub const& hub) const;
         Player* FindCrowdChatPartner(uint32 hubId, Player* bot);
         void BeginCrowdChat(Player* bot, Player* partner, Resident& resident, uint32 now);
         void ClearResidentChatPartner(uint32 partnerGuidLow, uint32 expectedGuidLow);
-        Player* FindDuelOpponent(Hub const& hub, Player* bot, float centerX, float centerY, float radius);
         Resident* FindResident(uint32 guidLow);
+        Resident const* FindResident(uint32 guidLow) const;
+        void AssignSpot(Resident& resident, Hub const& hub, Spot const& spot, bool allowStationary);
+        // Points mod-playerbots' "stay" position at the resident's target (journaled for the restore).
+        void SetStayPosition(Player* player, Resident& resident) const;
 
         // Config Accessors
         bool IsInteractionsEnabled() const { return _enableInteractions; }
@@ -74,8 +78,6 @@ namespace CityLife
         bool IsResidentInSyntheticActivity(uint32 guidLow) const;
         bool ValidateResidentAction(Player* bot, Resident const& resident) const;
         bool IsHumanControlled(Player* player) const;
-        // A human a resident may send a duel challenge to right now (checked at pick and at cast time).
-        bool CanChallengeHuman(Player* bot, Player* target, float maxDistance) const;
         bool IsConfiguredBotAccount(uint32 accountId) const;
 
     private:
@@ -93,11 +95,12 @@ namespace CityLife
         // True if this bot's mod-hearthside-chat archetype is on CityLife.Bots.Archetypes
         // (or that list is empty, or the chat module is not in the build).
         bool FitsArchetype(uint32 guidLow);
-        bool IsResidentUsable(Player* player, bool allowOwnedDuel = false) const;
+        bool IsResidentUsable(Player* player) const;
         uint32 GetLiveWorldBotCount(bool forceRefresh = false) const;
         std::vector<BotCandidate> LoadCandidates(Hub const& hub, uint32 poolCount = 0);
 
         Hub* FindHub(uint32 hubId);
+        Hub const* FindHub(uint32 hubId) const;
         Hub* FindHub(std::string const& name);
         Hub const* FindHubByZone(uint32 zoneId) const;
         bool IsStaticServiceSpot(Hub const& hub, Spot const& spot) const;
@@ -106,6 +109,9 @@ namespace CityLife
         bool IsHubDistrict(std::string const& hubName, std::string const& district) const;
         CitizenRole DetermineRole(Hub const& hub, Spot const& spot, BotCandidate const& candidate) const;
         CitizenActivity ChooseInitialActivity(CitizenRole role, Spot const& spot) const;
+        CitizenActivity PickNextActivity(Resident const& resident, Hub const& hub) const;
+        Spot const* ChooseSpotForActivity(Hub const& hub, CitizenActivity activity, uint32 ignoredSpotId, Player* botForPathCheck = nullptr) const;
+        static bool DistrictMatchesClass(std::string const& hubName, std::string const& district, uint8 botClass);
 
         uint32 CountResidents(uint32 hubId) const;
         // Wintergrasp hubs sit in the battlefield zone; while its battle runs they take no residents.
@@ -126,12 +132,9 @@ namespace CityLife
         void MaintainPopulation();
         void MaintainResidents();
         void RelocateResident(Resident& resident, Hub const& hub);
-        void AssignSpot(Resident& resident, Hub const& hub, Spot const& spot, bool allowStationary);
         void SnapTargetToGround(Player* player, Resident& resident, Hub const& hub, Spot const& spot) const;
-        void MaintainDuels();
 
         void ApplyCityStrategies(Player* player, Resident& resident) const;
-        void SetStayPosition(Player* player, Resident& resident) const;
         void RestoreResidentState(Player* player, Resident const& resident) const;
 
         // Command Handlers
@@ -151,7 +154,6 @@ namespace CityLife
         uint32 _tickSeconds = 10;
         uint32 _startupElapsedMs = 0;
         uint32 _timerMs = 0;
-        uint32 _duelTimerMs = 0;
 
         // Population Budget & Demand Profiles
         BudgetMode _budgetMode = BudgetMode::Percentage;
@@ -195,7 +197,7 @@ namespace CityLife
         uint32 _staticServiceChance = 80;
         std::unordered_set<std::string> _staticServiceHubs;
         std::unordered_set<std::string> _staticServiceCategories;
-        std::string _nonCombatStrategies = "+stay,-follow,-passive,-grind,-rpg,-travel,-duel,-pvp";
+        std::string _nonCombatStrategies = "+stay,-follow,-passive,-grind,-rpg,-new rpg,-travel,-duel,-pvp";
 
         // Activity Switches
         bool _actLeaveInn = true;
@@ -211,7 +213,6 @@ namespace CityLife
         bool _actFoodVendor = true;
         bool _actDuelWatching = true;
         bool _actFishing = true;
-        bool _actDuels = true;
         bool _actInnDancing = true;
         bool _actPlazaSocial = true;
         bool _actCrowdScenes = true;
@@ -225,12 +226,8 @@ namespace CityLife
         uint32 _crowdAfkMaxSec = 180;
         bool _activitiesAfkEnable = true;
 
-        // Duels Settings
-        uint32 _duelCooldownSec = 45;
-        uint32 _duelRealPlayerCooldownSec = 900;
-        bool _duelAllowPlayerChallenge = true;
-        bool _duelBotChallengeRealPlayer = true;
-        float _duelMaxDistance = 40.0f;
+        // Duel spectators
+        float _spectatorWatchRadius = 40.0f;
 
         // Movement & Sink Settings
         uint32 _mountBetweenPoiChance = 90;
@@ -251,9 +248,20 @@ namespace CityLife
 
         // Advanced Micro-Behaviors (Ported from mod-city-bots)
         bool _alternatingDistricts = true;
-        bool _duelMeetingPoint = true;
-        bool _duelTacticalRange = true;
         bool _waterAvoidance = true;
+
+        // Configurable Activity Weights (Ported from mod-city-bots)
+        uint32 _weightWanderDistrict = 30;
+        uint32 _weightSitInTavern = 20;
+        uint32 _weightRandomEmote = 15;
+        uint32 _weightVisitAuctionHouse = 10;
+        uint32 _weightVisitMailbox = 10;
+        uint32 _weightBuyFood = 10;
+        uint32 _weightVisitTrainer = 8;
+        uint32 _weightDrinkInTavern = 10;
+        uint32 _weightWalkCityWalls = 10;
+        uint32 _weightFishAtDocks = 5;
+        uint32 _weightReturnToInn = 15;
 
         std::vector<Hub> _hubs;
         struct ReleasingResident

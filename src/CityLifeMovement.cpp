@@ -114,7 +114,39 @@ namespace CityLife
             if (!CanMountHere(bot) || bot->HasMountedAura() || bot->isMoving())
                 return false;
 
-            // Class mounts (prioritized), epic racial mounts (100%), and standard racial mounts (60%)
+            // First, scan bot's learned spells for the fastest ground mount
+            uint32 bestSpell = 0;
+            int32 bestSpeed = -1;
+            for (auto const& entry : bot->GetSpellMap())
+            {
+                uint32 const spellId = entry.first;
+                if (!entry.second || entry.second->State == PLAYERSPELL_REMOVED || !entry.second->Active)
+                    continue;
+
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                if (!spellInfo || spellInfo->Effects[0].ApplyAuraName != SPELL_AURA_MOUNTED || spellInfo->IsPassive())
+                    continue;
+
+                if (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
+                    spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
+                    spellInfo->Id == 54729)
+                    continue;
+
+                int32 const speed = std::max(spellInfo->Effects[1].BasePoints, spellInfo->Effects[2].BasePoints);
+                if (speed > bestSpeed)
+                {
+                    bestSpeed = speed;
+                    bestSpell = spellId;
+                }
+            }
+
+            if (bestSpell != 0)
+            {
+                bot->CastSpell(bot, bestSpell, true);
+                return true;
+            }
+
+            // Fallback to standard racial and class mounts
             static uint32 const mountSpells[] = {
                 // Class Mounts
                 48778,  // Acherus Deathcharger (Death Knight)
@@ -209,6 +241,7 @@ namespace CityLife
 
             if (teleport || bot->GetMapId() != mapId)
             {
+                // mod-playerbots' PlayerbotHolder::UpdateSessions acks the teleport on its next update.
                 bot->TeleportTo(mapId, x, y, z, o);
             }
             else

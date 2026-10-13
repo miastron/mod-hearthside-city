@@ -127,8 +127,8 @@ CityLife.Time.NightMultiplierPct = 25
 
 # Resident bots occasionally move between auction houses, banks, mailboxes, and public squares.
 CityLife.Behaviour.Relocate = 1
-CityLife.Behaviour.RelocateMinSeconds = 180
-CityLife.Behaviour.RelocateMaxSeconds = 600
+CityLife.Behaviour.RelocateMinSeconds = 60
+CityLife.Behaviour.RelocateMaxSeconds = 180
 
 # Alternating District Visits:
 # When enabled, bots in major capitals (Stormwind, Orgrimmar, Ironforge, etc.) oscillate
@@ -145,16 +145,33 @@ CityLife.Behaviour.LeashRadius = 35
 CityLife.Behaviour.EmoteMinSeconds = 120
 CityLife.Behaviour.EmoteMaxSeconds = 360
 
-# Weight multiplier for auction houses and banks in designated hubs (250 = 2.5x base weight).
-CityLife.Behaviour.ServiceSpotWeightMultiplierPct = 250
+# Weight multiplier for auction houses and banks in designated hubs (100 = 1.0x base weight, balanced across all POIs).
+CityLife.Behaviour.ServiceSpotWeightMultiplierPct = 100
 
 # Percentage of bots initially assigned to service spots that will remain stationary.
-CityLife.Behaviour.StaticServiceChancePct = 80
+# Lowered to 20% to allow fluid circulation between mailboxes, vendors, trainers, taverns, and plazas.
+CityLife.Behaviour.StaticServiceChancePct = 20
 CityLife.Behaviour.StaticServiceHubs = "Stormwind,Orgrimmar"
 CityLife.Behaviour.StaticServiceCategories = "auction,bank"
 
+# Activity selection weights: when a roaming resident finishes an activity it picks the next one
+# with these relative odds (0 = never, at most 1000). An activity is skipped when its switch below
+# is off or the hub has no spot for it; wandering and emotes use the hub's plazas.
+CityLife.Weight.WanderDistrict = 30
+CityLife.Weight.SitInTavern = 20
+CityLife.Weight.DrinkInTavern = 10
+CityLife.Weight.RandomEmote = 15
+CityLife.Weight.VisitAuctionHouse = 10
+CityLife.Weight.VisitMailbox = 10
+CityLife.Weight.BuyFood = 10
+CityLife.Weight.VisitTrainer = 8
+CityLife.Weight.WalkCityWalls = 10
+CityLife.Weight.FishAtDocks = 5
+CityLife.Weight.ReturnToInn = 15
+
 # Non-combat strategy string applied to resident bots. Keep "-new rpg": with
 # Playerbots.EnableNewRpgStrategy on, it walks residents off to an innkeeper/flight master.
+# While all CityLife.Chat options are off, "-chat,-emote" is added as well.
 CityLife.Strategies.NonCombat = "+stay,-follow,-passive,-grind,-rpg,-new rpg,-travel,-duel,-pvp"
 
 ###################################################################################################
@@ -174,7 +191,6 @@ CityLife.Activities.Trainer.Enable = 1
 CityLife.Activities.FoodVendor.Enable = 1
 CityLife.Activities.DuelWatching.Enable = 1
 CityLife.Activities.Fishing.Enable = 1
-CityLife.Activities.Duels.Enable = 1
 CityLife.Activities.InnDancing.Enable = 1
 CityLife.Activities.PlazaSocial.Enable = 1
 CityLife.Activities.CrowdScenes.Enable = 1
@@ -190,7 +206,7 @@ CityLife.Activities.AFK.Enable = 1
 CityLife.Crowd.Enable = 1
 
 # Real-player proximity radius (in yards). Crowd logic wakes when a player enters this range.
-CityLife.Crowd.PlayerRadius = 60.0
+CityLife.Crowd.PlayerRadius = 100.0
 
 # Minimum cooldown (in seconds) between paired conversations for a crowd citizen.
 CityLife.Crowd.ChatCooldownSec = 90
@@ -200,37 +216,16 @@ CityLife.Crowd.AfkMinSec = 60
 CityLife.Crowd.AfkMaxSec = 180
 
 ###################################################################################################
-# Duelling Subsystem (Gate and Goldshire Duel Rings)
+# Duel Spectators
 ###################################################################################################
 
-# Cooldown between duels per bot (in seconds, at most 86400).
-CityLife.Duels.CooldownSec = 45
+# The gate and Goldshire duels are mod-hearthside-pvp's (PvPLife.Duel.*). City Life only sends
+# spectators: residents of the StormwindGate, OrgrimmarGate and GoldshireDuel hubs stand around
+# the duel grounds, face the nearest duel in progress and cheer it on, stepping back when a fight
+# comes too close. With no duel running they wait at their stand.
 
-# How long (in seconds, at most 86400) a real player is left alone after a bot challenged them.
-# Shared with mod-hearthside-pvp: a player challenged by either module is not challenged by the
-# other until it expires. Default matches PvP Life's PvPLife.Duel.PlayerChallengeCooldownSeconds.
-CityLife.Duels.RealPlayerCooldownSec = 900
-
-# Allow real players to challenge city residents. When 0, a resident declines a player's challenge.
-CityLife.Duels.AllowPlayerChallenge = 1
-
-# Allow bots to initiate duel challenges directed at real players within duel spots.
-# When enabled, bots will issue challenges to nearby non-GM real players (subject to
-# cross-module rate limiting and PlayerbotsLife challenge cooldowns). Real players with GM
-# privileges (security > SEC_PLAYER) are strictly shielded, as are players who are dead,
-# mounted, in a vehicle or flight, teleporting, AFK/DND or trading. An unanswered challenge is
-# withdrawn after 30 seconds.
-# Default: 1 (Enabled)
-CityLife.Duels.BotChallengeRealPlayer = 1
-
-# Maximum leash radius around duel rings (in yards).
-CityLife.Duels.MaxDuelDistance = 40.0
-
-# Enable duel meeting-point rendezvous (both bots meet at midpoint before challenging).
-CityLife.Duels.MeetingPoint.Enable = 1
-
-# Enable tactical combat range-keeping (ranged classes kite to 11-20yd, melee classes close in).
-CityLife.Duels.TacticalRange.Enable = 1
+# How far (in yards, 10-100) a spectator looks for a duel to watch.
+CityLife.Spectators.WatchRadius = 40.0
 
 ###################################################################################################
 # Movement, Mounting & Navmesh Safety
@@ -250,25 +245,26 @@ CityLife.Movement.SinkForensics = 1
 ###################################################################################################
 
 # Enable canned paired conversations between bots in crowd and plaza areas.
-# Set to 0 by default for silent out-of-the-box operation; enable if verbal chatter is desired.
+# Default: 0 (Disabled - completely silent operation).
 CityLife.Chat.ScriptedConversations = 0
 
 # Enable friendly greetings directed at nearby real players.
-# Set to 0 by default for silent out-of-the-box operation.
+# Default: 0 (Disabled - completely silent operation).
 CityLife.Chat.Greetings = 0
 
-# Allow unrestricted random /say chatter (disabled by default to prevent cascade).
+# Allow unrestricted random /say speech (disabled by default to prevent cascade).
 CityLife.Chat.Unrestricted = 0
 CityLife.Chat.RandomSayChance = 0
 CityLife.Chat.SayCooldownSec = 30
 
-# Enable economic interactions (trading, food purchasing). Disabled by default.
+# Enable economic interactions (trading, food purchasing). Disabled by default: with BuyFood on,
+# a resident at a food vendor really buys (mod-playerbots' "rpg buy"), spending its own gold.
 CityLife.Interactions.Enable = 0
 CityLife.Interactions.PlayerTrading = 0
 CityLife.Interactions.BuyFood = 0
 
 # Shield achievements and criteria progress while bots are actively engaged in
-# synthetic roleplay duels (residents whose activity is a gate/Goldshire duel).
+# synthetic roleplay activities (crowd and plaza scenes, inn dancing, tavern drinking, cheering duels).
 # When enabled (1), suppression applies only during synthetic actions and strictly
 # shields real human players and human-controlled SelfBots from suppression.
 # Default: 0 (Disabled - borrowed bots retain normal achievement progression)
@@ -279,11 +275,11 @@ CityLife.Achievements.BlockAchievements = 0
 ###################################################################################################
 
 CityLife.Hub.Stormwind.Enable = 1
-CityLife.Hub.Stormwind.Population = 35
+CityLife.Hub.Stormwind.Population = 45
 CityLife.Hub.Stormwind.Min = 5
 
 CityLife.Hub.Orgrimmar.Enable = 1
-CityLife.Hub.Orgrimmar.Population = 35
+CityLife.Hub.Orgrimmar.Population = 45
 CityLife.Hub.Orgrimmar.Min = 5
 
 CityLife.Hub.Ironforge.Enable = 1
@@ -324,26 +320,31 @@ CityLife.Hub.Goldshire.Enable = 1
 CityLife.Hub.Goldshire.Population = 10
 CityLife.Hub.Goldshire.Min = 2
 
-# Capital gate duel ritual grounds
+# Spectator stands at the duel grounds outside the Stormwind and Orgrimmar gates and in Goldshire
+# (the duels themselves are mod-hearthside-pvp's).
 CityLife.Hub.StormwindGate.Enable = 1
-CityLife.Hub.StormwindGate.Population = 10
-CityLife.Hub.StormwindGate.Min = 2
+CityLife.Hub.StormwindGate.Population = 4
+CityLife.Hub.StormwindGate.Min = 1
 
 CityLife.Hub.OrgrimmarGate.Enable = 1
-CityLife.Hub.OrgrimmarGate.Population = 10
-CityLife.Hub.OrgrimmarGate.Min = 2
+CityLife.Hub.OrgrimmarGate.Population = 4
+CityLife.Hub.OrgrimmarGate.Min = 1
 
-# Wintergrasp starting camps (level 70-80 bracket in the bundled SQL, balanced so high-level bots are
-# not monopolized). While the Wintergrasp battle is running these hubs take no residents and the
-# ones there are released.
-CityLife.Hub.WintergraspAlliance.Enable = 1
-CityLife.Hub.WintergraspAlliance.Population = 12
-CityLife.Hub.WintergraspAlliance.Min = 2
+CityLife.Hub.GoldshireDuel.Enable = 1
+CityLife.Hub.GoldshireDuel.Population = 3
+CityLife.Hub.GoldshireDuel.Min = 0
+
+# Wintergrasp starting camps. Off by default (the code default is off too when these keys are
+# missing). While the Wintergrasp battle is running these hubs take no residents and the ones
+# there are released.
+CityLife.Hub.WintergraspAlliance.Enable = 0
+CityLife.Hub.WintergraspAlliance.Population = 0
+CityLife.Hub.WintergraspAlliance.Min = 0
 CityLife.Hub.WintergraspAlliance.TimeScaling = 0
 CityLife.Hub.WintergraspAlliance.ResidenceSeconds = 10800
 
-CityLife.Hub.WintergraspHorde.Enable = 1
-CityLife.Hub.WintergraspHorde.Population = 12
-CityLife.Hub.WintergraspHorde.Min = 2
+CityLife.Hub.WintergraspHorde.Enable = 0
+CityLife.Hub.WintergraspHorde.Population = 0
+CityLife.Hub.WintergraspHorde.Min = 0
 CityLife.Hub.WintergraspHorde.TimeScaling = 0
 CityLife.Hub.WintergraspHorde.ResidenceSeconds = 10800

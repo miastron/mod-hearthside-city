@@ -6,7 +6,6 @@
 
 #include "CityLifeMgr.h"
 #include "LifeBotReservation.h"
-#include "LifeTelemetryBridge.h"
 
 #include "Chat.h"
 #include "CommandScript.h"
@@ -111,10 +110,7 @@ public:
             return true;
 
         // Never suppress real human players or human-controlled SelfBots
-        if (::IsRealPlayer(player))
-            return true;
-
-        if (::IsSelfBot(player))
+        if (::IsRealPlayer(player) || ::IsSelfBot(player))
             return true;
 
         uint32 const guidLow = player->GetGUID().GetCounter();
@@ -133,10 +129,7 @@ public:
             return true;
 
         // Never suppress real human players or human-controlled SelfBots
-        if (::IsRealPlayer(player))
-            return true;
-
-        if (::IsSelfBot(player))
+        if (::IsRealPlayer(player) || ::IsSelfBot(player))
             return true;
 
         uint32 const guidLow = player->GetGUID().GetCounter();
@@ -214,7 +207,6 @@ void AddCityLifeScripts()
             PlayerbotsLife::LIFE_BOT_RESERVATION_PROTOCOL_VERSION, PlayerbotsLife::GetRegisteredProtocolVersion());
 
     // The active-module flag is set by Manager::LoadConfig, only while City Life is enabled and its tables exist.
-    PlayerbotsLife::RegisterTelemetryBridge();
     new CityLifeWorldScript();
     new CityLifePlayerScript();
     new CityLifeGroupScript();

@@ -160,7 +160,7 @@ namespace
             return CityLife::CityPoiType::Inn;
         if (cat == "auction" || cat == "ah")
             return CityLife::CityPoiType::AuctionHouse;
-        if (cat == "mailbox")
+        if (cat == "mailbox" || cat == "mail")
             return CityLife::CityPoiType::Mailbox;
         if (cat == "tavern")
             return CityLife::CityPoiType::Tavern;
@@ -170,15 +170,44 @@ namespace
             return CityLife::CityPoiType::Dock;
         if (cat == "wall" || cat == "patrol")
             return CityLife::CityPoiType::WallPatrol;
-        if (cat == "vendor")
+        if (cat == "vendor" || cat == "food")
             return CityLife::CityPoiType::Vendor;
         if (cat == "duel" || cat == "ring")
             return CityLife::CityPoiType::DuelRing;
-        if (cat == "bed")
+        if (cat == "bed" || cat == "innbed")
             return CityLife::CityPoiType::InnBed;
         if (cat == "bank")
             return CityLife::CityPoiType::Bank;
         return CityLife::CityPoiType::Plaza;
+    }
+
+    // The kind of spot a resident heads for when it picks this activity next.
+    CityLife::CityPoiType PoiForActivity(CityLife::CitizenActivity activity)
+    {
+        using CityLife::CitizenActivity;
+        using CityLife::CityPoiType;
+        switch (activity)
+        {
+            case CitizenActivity::VisitAuctionHouse: return CityPoiType::AuctionHouse;
+            case CitizenActivity::VisitMailbox:      return CityPoiType::Mailbox;
+            case CitizenActivity::VisitTrainer:      return CityPoiType::Trainer;
+            case CitizenActivity::BuyFood:           return CityPoiType::Vendor;
+            case CitizenActivity::WalkCityWalls:     return CityPoiType::WallPatrol;
+            case CitizenActivity::FishAtDocks:       return CityPoiType::Dock;
+            case CitizenActivity::SitInTavern:
+            case CitizenActivity::DrinkInTavern:     return CityPoiType::Tavern;
+            case CitizenActivity::ReturnToInn:       return CityPoiType::Inn;
+            case CitizenActivity::WatchDuels:        return CityPoiType::DuelRing;
+            default:                                 return CityPoiType::Plaza;
+        }
+    }
+
+    // True when the spot is one PoiForActivity(activity) asks for (a tavern visit also fits an inn).
+    bool SpotFitsActivity(CityLife::Spot const& spot, CityLife::CitizenActivity activity)
+    {
+        CityLife::CityPoiType const wanted = PoiForActivity(activity);
+        return spot.PoiType == wanted ||
+            (wanted == CityLife::CityPoiType::Tavern && spot.PoiType == CityLife::CityPoiType::Inn);
     }
 }
 
@@ -277,14 +306,14 @@ namespace CityLife
 
         // Relocation & Movement
         _roaming = sConfigMgr->GetOption<bool>("CityLife.Behaviour.Relocate", true);
-        _relocateMinSeconds = std::max<uint32>(30, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.RelocateMinSeconds", 180));
-        _relocateMaxSeconds = std::max(_relocateMinSeconds, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.RelocateMaxSeconds", 600));
+        _relocateMinSeconds = std::max<uint32>(30, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.RelocateMinSeconds", 60));
+        _relocateMaxSeconds = std::max(_relocateMinSeconds, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.RelocateMaxSeconds", 180));
         _leashRadius = std::max<uint32>(10, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.LeashRadius", 35));
         // Second values used as milliseconds are capped at a day so "* 1000" stays well inside 2^31.
         _emoteMinSeconds = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.Behaviour.EmoteMinSeconds", 120), 30, DAY);
         _emoteMaxSeconds = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.Behaviour.EmoteMaxSeconds", 360), _emoteMinSeconds, DAY);
-        _serviceSpotWeightMultiplier = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.Behaviour.ServiceSpotWeightMultiplierPct", 250), 100, 1000);
-        _staticServiceChance = std::min<uint32>(100, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.StaticServiceChancePct", 80));
+        _serviceSpotWeightMultiplier = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.Behaviour.ServiceSpotWeightMultiplierPct", 100), 100, 1000);
+        _staticServiceChance = std::min<uint32>(100, sConfigMgr->GetOption<uint32>("CityLife.Behaviour.StaticServiceChancePct", 20));
 
         _staticServiceHubs.clear();
         std::string staticHubs = sConfigMgr->GetOption<std::string>("CityLife.Behaviour.StaticServiceHubs", "Stormwind,Orgrimmar");
@@ -317,7 +346,6 @@ namespace CityLife
         _actFoodVendor = sConfigMgr->GetOption<bool>("CityLife.Activities.FoodVendor.Enable", true);
         _actDuelWatching = sConfigMgr->GetOption<bool>("CityLife.Activities.DuelWatching.Enable", true);
         _actFishing = sConfigMgr->GetOption<bool>("CityLife.Activities.Fishing.Enable", true);
-        _actDuels = sConfigMgr->GetOption<bool>("CityLife.Activities.Duels.Enable", true);
         _actInnDancing = sConfigMgr->GetOption<bool>("CityLife.Activities.InnDancing.Enable", true);
         _actPlazaSocial = sConfigMgr->GetOption<bool>("CityLife.Activities.PlazaSocial.Enable", true);
         _actCrowdScenes = sConfigMgr->GetOption<bool>("CityLife.Activities.CrowdScenes.Enable", true);
@@ -326,23 +354,19 @@ namespace CityLife
 
         // Living Crowd Scenes
         _crowdEnable = sConfigMgr->GetOption<bool>("CityLife.Crowd.Enable", true);
-        _crowdPlayerRadius = sConfigMgr->GetOption<float>("CityLife.Crowd.PlayerRadius", 60.0f);
+        _crowdPlayerRadius = sConfigMgr->GetOption<float>("CityLife.Crowd.PlayerRadius", 100.0f);
         _crowdChatCooldownSec = std::min<uint32>(DAY, sConfigMgr->GetOption<uint32>("CityLife.Crowd.ChatCooldownSec", 90));
         _crowdAfkMinSec = std::min<uint32>(DAY, sConfigMgr->GetOption<uint32>("CityLife.Crowd.AfkMinSec", 60));
         _crowdAfkMaxSec = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.Crowd.AfkMaxSec", 180), _crowdAfkMinSec, DAY);
 
-        // Duels Settings
-        _duelCooldownSec = std::min<uint32>(DAY, sConfigMgr->GetOption<uint32>("CityLife.Duels.CooldownSec", 45));
-        _duelRealPlayerCooldownSec = std::min<uint32>(DAY, sConfigMgr->GetOption<uint32>("CityLife.Duels.RealPlayerCooldownSec", 900));
-        _duelAllowPlayerChallenge = sConfigMgr->GetOption<bool>("CityLife.Duels.AllowPlayerChallenge", true);
-        _duelBotChallengeRealPlayer = sConfigMgr->GetOption<bool>("CityLife.Duels.BotChallengeRealPlayer", true);
-        _duelMaxDistance = sConfigMgr->GetOption<float>("CityLife.Duels.MaxDuelDistance", 40.0f);
+        // Duel spectators (the duels themselves are mod-hearthside-pvp's)
+        _spectatorWatchRadius = std::clamp<float>(sConfigMgr->GetOption<float>("CityLife.Spectators.WatchRadius", 40.0f), 10.0f, 100.0f);
 
         // Movement & Sink Protection
         _mountBetweenPoiChance = std::min<uint32>(100, sConfigMgr->GetOption<uint32>("CityLife.Movement.MountBetweenPoiChance", 90));
         _sinkForensics = sConfigMgr->GetOption<bool>("CityLife.Movement.SinkForensics", true);
 
-        // Chat & Interactions (Default OFF for silent out-of-the-box operation)
+        // Chat & Interactions
         _chatScriptedConversations = sConfigMgr->GetOption<bool>("CityLife.Chat.ScriptedConversations", false);
         _chatGreetings = sConfigMgr->GetOption<bool>("CityLife.Chat.Greetings", false);
         _chatUnrestricted = sConfigMgr->GetOption<bool>("CityLife.Chat.Unrestricted", false);
@@ -355,9 +379,20 @@ namespace CityLife
 
         // Advanced Micro-Behaviors (Ported from mod-city-bots)
         _alternatingDistricts = sConfigMgr->GetOption<bool>("CityLife.AlternatingDistricts.Enable", true);
-        _duelMeetingPoint = sConfigMgr->GetOption<bool>("CityLife.Duels.MeetingPoint.Enable", true);
-        _duelTacticalRange = sConfigMgr->GetOption<bool>("CityLife.Duels.TacticalRange.Enable", true);
         _waterAvoidance = sConfigMgr->GetOption<bool>("CityLife.Movement.WaterAvoidance.Enable", true);
+
+        // Configurable Activity Weights (Ported from mod-city-bots)
+        _weightWanderDistrict = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.WanderDistrict", 30));
+        _weightSitInTavern = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.SitInTavern", 20));
+        _weightRandomEmote = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.RandomEmote", 15));
+        _weightVisitAuctionHouse = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.VisitAuctionHouse", 10));
+        _weightVisitMailbox = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.VisitMailbox", 10));
+        _weightBuyFood = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.BuyFood", 10));
+        _weightVisitTrainer = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.VisitTrainer", 8));
+        _weightDrinkInTavern = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.DrinkInTavern", 10));
+        _weightWalkCityWalls = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.WalkCityWalls", 10));
+        _weightFishAtDocks = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.FishAtDocks", 5));
+        _weightReturnToInn = std::min<uint32>(1000, sConfigMgr->GetOption<uint32>("CityLife.Weight.ReturnToInn", 15));
 
         ImportPlayerbotDefaults();
         CheckCoexistence();
@@ -498,16 +533,21 @@ namespace CityLife
                         hub.ZoneId = 12;
                 }
 
+                // Gate and Goldshire duel grounds: mod-hearthside-pvp runs the duels, residents here watch.
                 hub.DuelHub = (lowerName.find("gate") != std::string::npos || lowerName.find("duel") != std::string::npos);
                 hub.SocialHub = (lowerName == "goldshire");
 
                 std::string configPrefix = "CityLife.Hub." + hub.Name;
+                bool isWintergrasp = (lowerName.find("wintergrasp") != std::string::npos);
+                uint32 defaultPop = isWintergrasp ? 0 : hub.DefaultPopulation;
+                bool defaultEnable = isWintergrasp ? false : true;
+
                 hub.ConfiguredPopulation = sConfigMgr->GetOption<uint32>(
-                    configPrefix + ".Population", hub.DefaultPopulation, false);
+                    configPrefix + ".Population", defaultPop, false);
                 bool configEnabled = sConfigMgr->GetOption<bool>(
-                    configPrefix + ".Enable", true, false);
+                    configPrefix + ".Enable", defaultEnable, false);
                 hub.Enabled = hub.Enabled && configEnabled;
-                hub.UseTimeScaling = sConfigMgr->GetOption<bool>(configPrefix + ".TimeScaling", true, false);
+                hub.UseTimeScaling = sConfigMgr->GetOption<bool>(configPrefix + ".TimeScaling", !isWintergrasp, false);
                 hub.ResidenceSeconds = sConfigMgr->GetOption<uint32>(
                     configPrefix + ".ResidenceSeconds", 0, false);
                 hub.MinCount = sConfigMgr->GetOption<uint32>(
@@ -712,7 +752,7 @@ namespace CityLife
         return !IsResident(player->GetGUID().GetCounter());
     }
 
-    bool Manager::IsResidentUsable(Player* player, bool allowOwnedDuel) const
+    bool Manager::IsResidentUsable(Player* player) const
     {
         if (!player || !player->GetSession() || !player->IsInWorld())
             return false;
@@ -722,9 +762,7 @@ namespace CityLife
         PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
         if (!ai || ::IsRealPlayer(player) || ::IsSelfBot(player) || ai->HasGameClientMaster())
             return false;
-        if (!player->IsAlive() || player->IsInFlight())
-            return false;
-        if (player->duel && !allowOwnedDuel)
+        if (!player->IsAlive() || player->IsInFlight() || player->duel)
             return false;
         if (player->InBattleground() || player->InBattlegroundQueue())
             return false;
@@ -879,7 +917,11 @@ namespace CityLife
         uint32 deficit = (targetPop > currentCount) ? (targetPop - currentCount) : 1;
         uint32 candidateTarget = std::min<uint32>(dynamicCeiling, std::max<uint32>(20, deficit * 5));
 
-        // 3. Rotational sampling across online bots
+        // 3. Rotational sampling across online bots: prioritize local zone and map bots
+        std::vector<BotCandidate> localZoneCandidates;
+        std::vector<BotCandidate> localMapCandidates;
+        std::vector<BotCandidate> foreignCandidates;
+
         size_t n = _cachedOnlineGuids.size();
         size_t offset = urand(0, static_cast<uint32>(n - 1));
 
@@ -907,10 +949,36 @@ namespace CityLife
             candidate.Team = TeamForRace(candidate.Race);
             if (hub.Team != TeamSide::Any && candidate.Team != hub.Team)
                 continue;
-            candidates.push_back(candidate);
 
-            if (candidates.size() >= candidateTarget)
+            if (player->GetMapId() == hub.MapId && hub.ZoneId != 0 && player->GetZoneId() == hub.ZoneId)
+                localZoneCandidates.push_back(candidate);
+            else if (player->GetMapId() == hub.MapId)
+                localMapCandidates.push_back(candidate);
+            else
+                foreignCandidates.push_back(candidate);
+
+            if (localZoneCandidates.size() >= candidateTarget)
                 break;
+        }
+
+        candidates = std::move(localZoneCandidates);
+        if (candidates.size() < candidateTarget)
+        {
+            for (auto const& c : localMapCandidates)
+            {
+                candidates.push_back(c);
+                if (candidates.size() >= candidateTarget)
+                    break;
+            }
+        }
+        if (candidates.size() < candidateTarget)
+        {
+            for (auto const& c : foreignCandidates)
+            {
+                candidates.push_back(c);
+                if (candidates.size() >= candidateTarget)
+                    break;
+            }
         }
 
         for (size_t i = candidates.size(); i > 1; --i)
@@ -920,6 +988,13 @@ namespace CityLife
     }
 
     Hub* Manager::FindHub(uint32 hubId)
+    {
+        auto found = std::find_if(_hubs.begin(), _hubs.end(),
+            [&](Hub const& hub) { return hub.Id == hubId; });
+        return found == _hubs.end() ? nullptr : &*found;
+    }
+
+    Hub const* Manager::FindHub(uint32 hubId) const
     {
         auto found = std::find_if(_hubs.begin(), _hubs.end(),
             [&](Hub const& hub) { return hub.Id == hubId; });
@@ -954,6 +1029,20 @@ namespace CityLife
             }
         }
         return nullptr;
+    }
+
+    Spot const* Manager::FindInnBedSpot(Hub const& hub) const
+    {
+        // A bed if the hub has one, else the inn itself.
+        Spot const* inn = nullptr;
+        for (Spot const& spot : hub.Spots)
+        {
+            if (spot.PoiType == CityPoiType::InnBed || spot.Category == "bed")
+                return &spot;
+            if (!inn && (spot.PoiType == CityPoiType::Inn || spot.Category == "inn"))
+                inn = &spot;
+        }
+        return inn;
     }
 
     bool Manager::IsStaticServiceSpot(Hub const& hub, Spot const& spot) const
@@ -1006,6 +1095,109 @@ namespace CityLife
         return false;
     }
 
+    bool Manager::DistrictMatchesClass(std::string const& hubName, std::string const& district, uint8 botClass)
+    {
+        std::string h = Lower(hubName);
+        std::string d = Lower(district);
+
+        if (h == "stormwind")
+        {
+            switch (botClass)
+            {
+                case CLASS_MAGE:
+                case CLASS_WARLOCK:
+                    return d.find("mage") != std::string::npos;
+                case CLASS_ROGUE:
+                case CLASS_WARRIOR:
+                case CLASS_DEATH_KNIGHT:
+                    return d.find("old") != std::string::npos;
+                case CLASS_PALADIN:
+                case CLASS_PRIEST:
+                    return d.find("cathedral") != std::string::npos;
+                case CLASS_HUNTER:
+                case CLASS_SHAMAN:
+                    return d.find("dwarf") != std::string::npos;
+                case CLASS_DRUID:
+                    return d.find("park") != std::string::npos || d.find("cathedral") != std::string::npos;
+                default:
+                    return true;
+            }
+        }
+        else if (h == "orgrimmar")
+        {
+            switch (botClass)
+            {
+                case CLASS_WARRIOR:
+                case CLASS_ROGUE:
+                case CLASS_DEATH_KNIGHT:
+                    return d.find("strength") != std::string::npos;
+                case CLASS_HUNTER:
+                case CLASS_SHAMAN:
+                case CLASS_PRIEST:
+                case CLASS_MAGE:
+                    return d.find("spirit") != std::string::npos;
+                case CLASS_DRUID:
+                    return d.find("wisdom") != std::string::npos;
+                case CLASS_WARLOCK:
+                    return d.find("cleft") != std::string::npos || d.find("shadow") != std::string::npos;
+                default:
+                    return true;
+            }
+        }
+        else if (h == "ironforge")
+        {
+            switch (botClass)
+            {
+                case CLASS_WARRIOR:
+                case CLASS_PALADIN:
+                case CLASS_HUNTER:
+                case CLASS_ROGUE:
+                case CLASS_DEATH_KNIGHT:
+                    return d.find("military") != std::string::npos || d.find("commons") != std::string::npos;
+                case CLASS_MAGE:
+                case CLASS_PRIEST:
+                case CLASS_WARLOCK:
+                    return d.find("mystic") != std::string::npos;
+                default:
+                    return true;
+            }
+        }
+        else if (h == "undercity")
+        {
+            switch (botClass)
+            {
+                case CLASS_WARRIOR:
+                case CLASS_ROGUE:
+                case CLASS_DEATH_KNIGHT:
+                    return d.find("war") != std::string::npos || d.find("center") != std::string::npos;
+                case CLASS_MAGE:
+                case CLASS_WARLOCK:
+                case CLASS_PRIEST:
+                    return d.find("magic") != std::string::npos || d.find("apothecary") != std::string::npos;
+                default:
+                    return true;
+            }
+        }
+        else if (h == "darnassus")
+        {
+            switch (botClass)
+            {
+                case CLASS_WARRIOR:
+                case CLASS_ROGUE:
+                    return d.find("warrior") != std::string::npos;
+                case CLASS_PRIEST:
+                case CLASS_PALADIN:
+                    return d.find("temple") != std::string::npos;
+                case CLASS_DRUID:
+                case CLASS_HUNTER:
+                    return d.find("cenarion") != std::string::npos;
+                default:
+                    return true;
+            }
+        }
+        return true;
+    }
+
     Spot const* Manager::ChooseSpot(Hub const& hub, uint32 ignoredSpotId, bool filterByDistrict, bool targetHubDistrict, Player* botForPathCheck) const
     {
         Spot const* best = nullptr;
@@ -1027,6 +1219,9 @@ namespace CityLife
 
         auto passesInnFilter = [&](Spot const& spot)
         {
+            // Beds are for the end-of-residence sleep (FindInnBedSpot), not for roaming.
+            if (spot.PoiType == CityPoiType::InnBed)
+                return false;
             if (!currentSpot)
                 return true;
             bool currentIsInInn = (currentSpot->Category == "inn" || currentSpot->PoiType == CityPoiType::Tavern);
@@ -1124,36 +1319,24 @@ namespace CityLife
         return best;
     }
 
-    CitizenRole Manager::DetermineRole(Hub const& hub, Spot const& spot, BotCandidate const& candidate) const
+    CitizenRole Manager::DetermineRole(Hub const& hub, Spot const& spot, BotCandidate const& /*candidate*/) const
     {
-        if (hub.DuelHub || spot.PoiType == CityPoiType::DuelRing)
-        {
-            if (candidate.Level >= 80)
-            {
-                if (Lower(hub.Name).find("goldshire") != std::string::npos)
-                    return CitizenRole::GoldshireDuelist;
-                return CitizenRole::GateDuelist;
-            }
-        }
+        // Everyone on a duel ground watches; the duels there are mod-hearthside-pvp's.
+        if ((hub.DuelHub || spot.PoiType == CityPoiType::DuelRing) && _actDuelWatching)
+            return CitizenRole::Spectator;
 
+        // Every dock resident fishes: with a pole and the skill it casts Fishing, otherwise it plays
+        // the animation (ExecuteFishing), so nothing is learned, equipped or looted for it.
         if (spot.PoiType == CityPoiType::Dock && _actFishing)
-        {
-            Player* p = FindPlayer(candidate.GuidLow);
-            Item* pole = p ? p->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND) : nullptr;
-            if (p && p->GetSkillValue(SKILL_FISHING) > 0 && pole && pole->GetTemplate() &&
-                pole->GetTemplate()->Class == ITEM_CLASS_WEAPON &&
-                pole->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_FISHING_POLE)
-                return CitizenRole::Fisher;
-        }
+            return CitizenRole::Fisher;
 
-        if (Lower(hub.Name) == "goldshire" && spot.Category == "inn" && _actInnDancing)
+        if (Lower(hub.Name) == "goldshire" && (spot.District == "LionsPrideUp" || spot.Name.find("Dance") != std::string::npos || spot.Category == "inn") && _actInnDancing)
             return CitizenRole::InnDancer;
 
         if (spot.PoiType == CityPoiType::Plaza && _actPlazaSocial)
             return CitizenRole::PlazaTalker;
 
-        if ((spot.PoiType == CityPoiType::Bank || spot.PoiType == CityPoiType::AuctionHouse) &&
-            _actCrowdScenes && _crowdEnable)
+        if (spot.PoiType == CityPoiType::Bank && _actCrowdScenes && _crowdEnable)
             return CitizenRole::Crowd;
 
         return CitizenRole::Flex;
@@ -1169,23 +1352,25 @@ namespace CityLife
                 return CitizenActivity::InnDance;
             case CitizenRole::PlazaTalker:
                 return CitizenActivity::PlazaSocial;
-            case CitizenRole::GateDuelist:
-            case CitizenRole::GoldshireDuelist:
-                return CitizenActivity::Duel;
             case CitizenRole::Crowd:
                 return CitizenActivity::CrowdSocial;
+            case CitizenRole::Spectator:
+                return CitizenActivity::WatchDuels;
             default:
                 break;
         }
 
         switch (spot.PoiType)
         {
+            case CityPoiType::Inn:
             case CityPoiType::Tavern:
                 if (_actTavernSitting && _actTavernDrinking)
                     return roll_chance_i(50) ? CitizenActivity::DrinkInTavern : CitizenActivity::SitInTavern;
                 if (_actTavernDrinking)
                     return CitizenActivity::DrinkInTavern;
                 return _actTavernSitting ? CitizenActivity::SitInTavern : CitizenActivity::Idle;
+            case CityPoiType::InnBed:
+                return CitizenActivity::ReleaseCycle;
             case CityPoiType::AuctionHouse:
                 return _actAuctionHouse ? CitizenActivity::VisitAuctionHouse : CitizenActivity::Idle;
             case CityPoiType::Mailbox:
@@ -1196,11 +1381,163 @@ namespace CityLife
                 return _actFoodVendor ? CitizenActivity::BuyFood : CitizenActivity::Idle;
             case CityPoiType::WallPatrol:
                 return _actWallWalking ? CitizenActivity::WalkCityWalls : CitizenActivity::Idle;
+            case CityPoiType::Bank:
+                if (_actCrowdScenes && _crowdEnable)
+                    return CitizenActivity::CrowdSocial;
+                return _actAuctionHouse ? CitizenActivity::VisitAuctionHouse : CitizenActivity::Idle;
+            case CityPoiType::Plaza:
+                return _actPlazaSocial ? CitizenActivity::PlazaSocial : CitizenActivity::Idle;
+            case CityPoiType::Dock:
+                return _actFishing ? CitizenActivity::FishAtDocks : (_actRoaming ? CitizenActivity::WanderDistrict : CitizenActivity::Idle);
             case CityPoiType::DuelRing:
                 return _actDuelWatching ? CitizenActivity::WatchDuels : CitizenActivity::Idle;
             default:
                 return _actRoaming ? CitizenActivity::WanderDistrict : CitizenActivity::RandomEmote;
         }
+    }
+
+    CitizenActivity Manager::PickNextActivity(Resident const& resident, Hub const& hub) const
+    {
+        // Spectators stay on the duel ground; fishers and dancers never relocate. Plaza talkers and
+        // crowd members get a role from the spot they stand on and move on like anyone else.
+        if (resident.Role == CitizenRole::Spectator)
+            return CitizenActivity::WatchDuels;
+
+        struct ActivityWeightOption
+        {
+            CitizenActivity Activity;
+            uint32 Weight;
+            bool Enabled;
+            CityPoiType RequiredPoi;
+        };
+
+        ActivityWeightOption pool[] = {
+            { CitizenActivity::WanderDistrict,     _weightWanderDistrict,     _actRoaming,        CityPoiType::Plaza },
+            { CitizenActivity::SitInTavern,         _weightSitInTavern,         _actTavernSitting,  CityPoiType::Tavern },
+            { CitizenActivity::DrinkInTavern,       _weightDrinkInTavern,       _actTavernDrinking, CityPoiType::Tavern },
+            { CitizenActivity::RandomEmote,         _weightRandomEmote,         _actRandomEmotes,   CityPoiType::Plaza },
+            { CitizenActivity::VisitAuctionHouse,   _weightVisitAuctionHouse,   _actAuctionHouse,   CityPoiType::AuctionHouse },
+            { CitizenActivity::VisitMailbox,        _weightVisitMailbox,        _actMailbox,        CityPoiType::Mailbox },
+            { CitizenActivity::BuyFood,             _weightBuyFood,             _actFoodVendor,     CityPoiType::Vendor },
+            { CitizenActivity::VisitTrainer,        _weightVisitTrainer,        _actTrainer,        CityPoiType::Trainer },
+            { CitizenActivity::WalkCityWalls,       _weightWalkCityWalls,       _actWallWalking,    CityPoiType::WallPatrol },
+            { CitizenActivity::FishAtDocks,         _weightFishAtDocks,         _actFishing,        CityPoiType::Dock },
+            { CitizenActivity::ReturnToInn,         _weightReturnToInn,         _actReturnToInn,    CityPoiType::Inn }
+        };
+
+        // Weights are capped at 1000 in LoadConfig, so the running total cannot overflow.
+        uint32 totalWeight = 0;
+        for (auto& item : pool)
+        {
+            if (!item.Enabled || item.Weight == 0)
+            {
+                item.Weight = 0;
+                continue;
+            }
+
+            // Don't repeat the exact same activity immediately if other options exist
+            if (item.Activity == resident.Activity)
+            {
+                item.Weight = 0;
+                continue;
+            }
+
+            bool hasPoi = std::any_of(hub.Spots.begin(), hub.Spots.end(),
+                [&](Spot const& s) {
+                    return s.PoiType == item.RequiredPoi || (item.RequiredPoi == CityPoiType::Tavern && s.PoiType == CityPoiType::Inn);
+                });
+
+            if (!hasPoi && item.RequiredPoi != CityPoiType::Plaza)
+            {
+                item.Weight = 0;
+                continue;
+            }
+
+            totalWeight += item.Weight;
+        }
+
+        if (totalWeight == 0)
+            return CitizenActivity::WanderDistrict;
+
+        uint32 roll = urand(1, totalWeight);
+        for (auto const& item : pool)
+        {
+            if (roll <= item.Weight)
+                return item.Activity;
+            roll -= item.Weight;
+        }
+        return CitizenActivity::WanderDistrict;
+    }
+
+    Spot const* Manager::ChooseSpotForActivity(Hub const& hub, CitizenActivity activity, uint32 ignoredSpotId, Player* botForPathCheck) const
+    {
+        CityPoiType const targetType = PoiForActivity(activity);
+
+        std::vector<Spot const*> matchingSpots;
+        for (Spot const& spot : hub.Spots)
+        {
+            if (spot.Id == ignoredSpotId)
+                continue;
+
+            if (SpotFitsActivity(spot, activity))
+                matchingSpots.push_back(&spot);
+        }
+
+        if (targetType == CityPoiType::Trainer && botForPathCheck)
+        {
+            std::vector<Spot const*> classSpots;
+            uint8 bClass = botForPathCheck->getClass();
+            for (Spot const* sp : matchingSpots)
+            {
+                if (DistrictMatchesClass(hub.Name, sp->District, bClass) ||
+                    DistrictMatchesClass(hub.Name, sp->Name, bClass))
+                {
+                    classSpots.push_back(sp);
+                }
+            }
+            if (!classSpots.empty())
+                matchingSpots = std::move(classSpots);
+        }
+
+        if (matchingSpots.empty() && targetType == CityPoiType::Trainer)
+        {
+            for (Spot const& spot : hub.Spots)
+            {
+                if (spot.PoiType == CityPoiType::Trainer)
+                    matchingSpots.push_back(&spot);
+            }
+        }
+
+        if (matchingSpots.empty())
+            return ChooseSpot(hub, ignoredSpotId, false, false, botForPathCheck);
+
+        Spot const* best = nullptr;
+        uint64 bestScore = std::numeric_limits<uint64>::max();
+
+        for (Spot const* spotPtr : matchingSpots)
+        {
+            Spot const& spot = *spotPtr;
+            if (_waterAvoidance && botForPathCheck && spot.PoiType != CityPoiType::Dock)
+            {
+                if (!Movement::HasCompleteWalkablePath(botForPathCheck, spot.X, spot.Y, spot.Z, false))
+                    continue;
+            }
+
+            uint32 occupants = static_cast<uint32>(std::count_if(_residents.begin(), _residents.end(),
+                [&](Resident const& r) { return r.HubId == hub.Id && r.SpotId == spot.Id; }));
+
+            uint64 score = (static_cast<uint64>(occupants) + 1) * 10000 / std::max<uint32>(1, spot.Weight) + urand(0, 50);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = &spot;
+            }
+        }
+
+        if (!best && !matchingSpots.empty())
+            best = matchingSpots[urand(0, static_cast<uint32>(matchingSpots.size()) - 1)];
+
+        return best ? best : ChooseSpot(hub, ignoredSpotId, false, false, botForPathCheck);
     }
 
     uint32 Manager::CountResidents(uint32 hubId) const
@@ -1256,7 +1593,7 @@ namespace CityLife
                 static_cast<double>(nominal) * CurrentTimeMultiplier() / 100.0));
         }
 
-        if (_demandMode == DemandMode::Fixed || hub.DuelHub)
+        if (_demandMode == DemandMode::Fixed)
             return nominal;
 
         // Dynamic or Hybrid demand evaluation
@@ -1448,77 +1785,17 @@ namespace CityLife
         return nullptr;
     }
 
-    Player* Manager::FindDuelOpponent(Hub const& hub, Player* bot, float centerX, float centerY, float radius)
+    Resident const* Manager::FindResident(uint32 guidLow) const
     {
-        if (!bot)
-            return nullptr;
-
         for (Resident const& r : _residents)
         {
-            if (r.HubId != hub.Id || r.Bot.GuidLow == bot->GetGUID().GetCounter())
-                continue;
-
-            if (r.Activity == CitizenActivity::Duel && r.DuelPartnerGuid == 0 &&
-                MsReached(GameTimeMS(), r.DuelCooldownUntilMs))
-            {
-                Player* opponent = FindPlayer(r.Bot.GuidLow);
-                if (!opponent || !opponent->IsInWorld() || opponent->duel || opponent->IsInCombat() ||
-                    !PlayerbotsLife::ValidateActiveLease(r.Token) || !IsResidentUsable(opponent, true))
-                    continue;
-                // Both duelists awake under BotActiveAlone: one forced active (a real player's friend,
-                // say) must not walk to a rendezvous with a paused resident that will not answer.
-                if (PlayerbotAI* oppAi = GET_PLAYERBOT_AI(opponent); !oppAi || !oppAi->AllowActivity())
-                    continue;
-
-                if (opponent->GetDistance2d(centerX, centerY) > radius)
-                    continue;
-
-                if (!bot->IsWithinLOSInMap(opponent))
-                    continue;
-
-                return opponent;
-            }
+            if (r.Bot.GuidLow == guidLow)
+                return &r;
         }
-
-        if (_duelBotChallengeRealPlayer && bot->GetMap())
-        {
-            uint32 nowSec = GameTimeSeconds();
-            for (auto const& pRef : bot->GetMap()->GetPlayers())
-            {
-                Player* opponent = pRef.GetSource();
-                if (!CanChallengeHuman(bot, opponent, 0.0f))
-                    continue;
-
-                uint32 oppGuidLow = opponent->GetGUID().GetCounter();
-                if (!PlayerbotsLife::CanChallengeRealPlayer(oppGuidLow, nowSec))
-                    continue;
-
-                if (opponent->GetDistance2d(centerX, centerY) > radius)
-                    continue;
-
-                if (!bot->IsWithinLOSInMap(opponent))
-                    continue;
-
-                return opponent;
-            }
-        }
-
+        for (ReleasingResident const& pending : _releasingResidents)
+            if (pending.Actor.Bot.GuidLow == guidLow)
+                return &pending.Actor;
         return nullptr;
-    }
-
-    bool Manager::CanChallengeHuman(Player* bot, Player* target, float maxDistance) const
-    {
-        if (!bot || !target || target == bot || !target->IsInWorld() || !IsHumanPlayer(target))
-            return false;
-        if (target->IsGameMaster() || target->GetSession()->GetSecurity() > SEC_PLAYER)
-            return false;
-        if (!target->IsAlive() || target->duel || target->IsInCombat() || target->IsMounted() ||
-            target->GetVehicle() || target->IsInFlight() || target->IsBeingTeleported() ||
-            target->isAFK() || target->isDND() || target->GetTradeData())
-            return false;
-        if (maxDistance > 0.0f && (target->GetMapId() != bot->GetMapId() || bot->GetDistance(target) > maxDistance))
-            return false;
-        return true;
     }
 
     void Manager::AssignSpot(Resident& resident, Hub const& hub, Spot const& spot, bool allowStationary)
@@ -1532,11 +1809,21 @@ namespace CityLife
         resident.TargetY = spot.Y + std::sin(angle) * distance;
         resident.TargetZ = spot.Z;
         resident.TargetO = spot.O;
-        resident.Stationary = allowStationary && IsStaticServiceSpot(hub, spot) &&
-            urand(1, 100) <= _staticServiceChance;
 
         resident.Role = DetermineRole(hub, spot, resident.Bot);
-        resident.Activity = ChooseInitialActivity(resident.Role, spot);
+        if (resident.Activity != CitizenActivity::ReleaseCycle)
+        {
+            resident.Activity = ChooseInitialActivity(resident.Role, spot);
+        }
+
+        // Dedicated venue performers (inn dancers, fishers, bed sleepers) remain stationary at their venue
+        bool isDedicatedPerformer = (resident.Role == CitizenRole::InnDancer ||
+                                     resident.Role == CitizenRole::Fisher ||
+                                     resident.Activity == CitizenActivity::ReleaseCycle ||
+                                     spot.PoiType == CityPoiType::InnBed);
+
+        resident.Stationary = isDedicatedPerformer || (allowStationary && IsStaticServiceSpot(hub, spot) &&
+            urand(1, 100) <= _staticServiceChance);
         resident.ActivityStartMs = GameTimeMS();
         resident.ActivityDurationMs = urand(45, 180) * 1000;
         resident.LastRoamWasHub = IsHubDistrict(hub.Name, spot.District);
@@ -1726,7 +2013,6 @@ namespace CityLife
                     ++pending;
                     continue;
                 }
-                Activities::CancelCityDuel(player, "residence-ended");
                 if (player->IsInCombat())
                 {
                     ++pending;
@@ -1748,7 +2034,6 @@ namespace CityLife
                 // Terminal fallback / takeover / timeout / shutdown path
                 if (player && !isHuman)
                 {
-                    Activities::CancelCityDuel(player, "residence-ended");
                     Activities::CrowdClearAfk(player);
                     Activities::CrowdReleaseChat(player, resident);
                     Activities::StopDance(player, resident);
@@ -1765,10 +2050,6 @@ namespace CityLife
 
             if (owned)
                 PlayerbotsLife::ReleaseLeaseExact(resident.Token);
-            if (resident.DuelStagingSlotId)
-                PlayerbotsLife::ReleaseDuelStagingSlot(resident.DuelStagingSlotId, PlayerbotsLife::ReservationOwner::CityLife);
-            if (resident.DuelPairId)
-                PlayerbotsLife::ReleaseDuelStagingSlotByPair(resident.DuelPairId, PlayerbotsLife::ReservationOwner::CityLife);
             pending = _releasingResidents.erase(pending);
         }
     }
@@ -1800,14 +2081,38 @@ namespace CityLife
         {
             Player* player = FindPlayer(resident->Bot.GuidLow);
             Hub* hub = FindHub(resident->HubId);
-            bool isDueling = (resident->Activity == CitizenActivity::Duel) || (player && player->duel != nullptr);
             bool residenceExpired = resident->ReleaseAt != 0 && resident->ReleaseAt <= now && player &&
-                !player->IsInCombat() && !player->IsBeingTeleported() && !isDueling;
+                !player->IsInCombat() && !player->IsBeingTeleported();
             // Wintergrasp battle started: leave the zone through the normal (throttled, restoring) release.
             bool warHub = hub && IsWintergraspWarHub(*hub);
             bool leaseLost = !PlayerbotsLife::ValidateActiveLease(resident->Token);
-            if (!hub || leaseLost || !IsResidentUsable(player, isDueling) || residenceExpired || warHub)
+            bool usable = IsResidentUsable(player);
+
+            // Residence over: walk to an inn bed and sleep a little before the final release.
+            if (residenceExpired && hub && usable && !leaseLost && !warHub && _actReturnToInn &&
+                resident->Activity != CitizenActivity::ReleaseCycle)
             {
+                if (Spot const* restSpot = FindInnBedSpot(*hub))
+                {
+                    Activities::StopDance(player, *resident);
+                    resident->Activity = CitizenActivity::ReleaseCycle;
+                    AssignSpot(*resident, *hub, *restSpot, true);
+                    resident->ReleaseAt = now + 20; // 20s in bed before the final release
+                    SetStayPosition(player, *resident);
+                    Movement::MoveToPosition(player, hub->MapId, resident->TargetX, resident->TargetY,
+                        resident->TargetZ, resident->TargetO, false);
+                    ++resident;
+                    continue;
+                }
+            }
+
+            if (!hub || leaseLost || !usable || residenceExpired || warHub)
+            {
+                if (player && player->getStandState() == UNIT_STAND_STATE_SLEEP)
+                    player->SetStandState(UNIT_STAND_STATE_STAND);
+                if (player)
+                    player->HandleEmoteCommand(EMOTE_ONESHOT_NONE);
+
                 auto countIt = _hubResidentCounts.find(resident->HubId);
                 if (countIt != _hubResidentCounts.end() && countIt->second > 0)
                     --countIt->second;
@@ -1874,7 +2179,7 @@ namespace CityLife
                     {
                         Player* player = FindPlayer(resident.Bot.GuidLow);
                         return resident.HubId == hub.Id && player && !player->IsInCombat() &&
-                            !player->IsBeingTeleported() && !player->duel && !resident.DuelMeetingSet;
+                            !player->IsBeingTeleported() && !player->duel;
                     });
                 if (found == _residents.rend())
                     break;
@@ -1929,12 +2234,24 @@ namespace CityLife
 
     void Manager::RelocateResident(Resident& resident, Hub const& hub)
     {
+        if (resident.Stationary ||
+            resident.Activity == CitizenActivity::ReleaseCycle ||
+            resident.Activity == CitizenActivity::InnDance ||
+            resident.Activity == CitizenActivity::FishAtDocks ||
+            resident.Role == CitizenRole::InnDancer ||
+            resident.Role == CitizenRole::Fisher)
+        {
+            return;
+        }
+
         Player* player = FindPlayer(resident.Bot.GuidLow);
         if (!player)
             return;
 
-        Spot const* spot = nullptr;
-        if (_alternatingDistricts && UsesAlternatingHubRoute(hub.Name))
+        CitizenActivity nextActivity = PickNextActivity(resident, hub);
+        Spot const* spot = ChooseSpotForActivity(hub, nextActivity, resident.SpotId, player);
+
+        if (!spot && _alternatingDistricts && UsesAlternatingHubRoute(hub.Name))
         {
             bool targetHub = !resident.LastRoamWasHub;
             spot = ChooseSpot(hub, resident.SpotId, true, targetHub, player);
@@ -1957,8 +2274,18 @@ namespace CityLife
             return;
 
         Activities::StopDance(player, resident);
+        if (resident.Sitting || player->getStandState() != UNIT_STAND_STATE_STAND)
+        {
+            player->SetStandState(UNIT_STAND_STATE_STAND);
+            resident.Sitting = false;
+        }
+
         AssignSpot(resident, hub, *spot, false);
         SnapTargetToGround(player, resident, hub, *spot);
+        // AssignSpot derived the activity from the spot; keep the picked one when the spot fits it
+        // (a fallback spot of another kind keeps the activity that suits it).
+        if (resident.Role == CitizenRole::Flex && SpotFitsActivity(*spot, nextActivity))
+            resident.Activity = nextActivity;
         uint32 nowSec = GameTimeSeconds();
         resident.NextMoveAt = nowSec + urand(_relocateMinSeconds, _relocateMaxSeconds);
 
@@ -1986,9 +2313,10 @@ namespace CityLife
         {
             Hub* hub = FindHub(resident.HubId);
             Player* player = FindPlayer(resident.Bot.GuidLow);
+            // mod-playerbots' PlayerbotHolder::UpdateSessions acks a bot's teleport every update.
             if (!hub || !player || player->IsBeingTeleported() ||
                 !PlayerbotsLife::ValidateActiveLease(resident.Token) ||
-                !IsResidentUsable(player, player->duel != nullptr || resident.DuelMeetingSet))
+                !IsResidentUsable(player))
                 continue;
 
             if ((!_activitiesAfkEnable || !_crowdEnable || !_actCrowdScenes) && resident.AfkSetByModule)
@@ -2001,12 +2329,7 @@ namespace CityLife
                 resident.NextReservationRefreshAt = nowSec + ReservationRefreshSeconds;
             }
 
-            // Live duels and rendezvous are driven by MaintainDuels on its own short cadence.
             if (player->IsInCombat() || player->duel || player->IsInFlight())
-                continue;
-
-            // Rendezvous owns movement until it closes; stay/roam must not pull actors away.
-            if (resident.DuelMeetingSet && _actDuels)
                 continue;
             // Sink Forensics Check
             Movement::CheckSinkForensics(player, resident.LastSweepZ, _sinkForensics);
@@ -2024,10 +2347,28 @@ namespace CityLife
             }
 
             // Leash check: skipped while a relocation walk or a crowd wander is still under way.
+            // Fishers and dancers belong at their venue and get a tighter leash.
             bool travelling = (resident.LeashGraceUntil > nowSec && resident.LeashGraceUntil - nowSec <= 120) ||
                 resident.CrowdPhaseState == CrowdPhase::WanderOut || resident.CrowdPhaseState == CrowdPhase::WanderBack;
-            if (player->GetMapId() != hub->MapId ||
-                (!travelling && player->GetDistance2d(resident.TargetX, resident.TargetY) > _leashRadius))
+            bool const isDedicatedPerformer = resident.Role == CitizenRole::Fisher ||
+                resident.Role == CitizenRole::InnDancer;
+            float const distToTarget = player->GetDistance2d(resident.TargetX, resident.TargetY);
+            float const leash = isDedicatedPerformer ? std::min<float>(20.0f, _leashRadius) : _leashRadius;
+
+            // Off the hub's map, or settled in another zone than its spot's (a stray path, a knockback
+            // off a ledge): a resident that just took up this activity is put back; one that wanders
+            // off again is released. The spot's own zone is the reference, so a hub whose zone_id is
+            // wrong or whose spots straddle a border does not lose its residents.
+            bool const inForeignZone = player->GetMapId() != hub->MapId ||
+                (!travelling && player->GetZoneId() != player->GetMap()->GetZoneId(player->GetPhaseMask(),
+                    resident.TargetX, resident.TargetY, resident.TargetZ));
+            if (inForeignZone && player->GetMapId() == hub->MapId && nowMs - resident.ActivityStartMs > 30000)
+            {
+                ReleaseResident(resident, false);
+                continue;
+            }
+
+            if (inForeignZone || (!travelling && distToTarget > leash))
             {
                 ApplyCityStrategies(player, resident);
                 SetStayPosition(player, resident);
@@ -2036,12 +2377,13 @@ namespace CityLife
             }
 
             // Arrival check: dismount when close to target
-            if (player->GetDistance2d(resident.TargetX, resident.TargetY) <= 4.0f)
+            if (distToTarget <= 4.0f)
             {
                 if (!resident.AtSpot)
                 {
                     resident.AtSpot = true;
                     Movement::DismountIfMounted(player);
+                    SetStayPosition(player, resident);
                 }
             }
             else
@@ -2051,32 +2393,109 @@ namespace CityLife
 
             // Follow mod-playerbots' BotActiveAlone: a resident its rules have paused (no real player
             // in range or in the zone, not in the rotating share, SmartScale) keeps its spot and its
-            // lease but starts nothing new -- no activity change, roaming or duel -- until it wakes,
+            // lease but starts nothing new -- no activity change or roaming -- until it wakes,
             // so a player walking up finds the residents already there and watches them come to life.
             if (PlayerbotAI* ai = GET_PLAYERBOT_AI(player); !ai || !ai->AllowActivity())
                 continue;
 
+            // Stalled short of the spot after the walk's grace ran out (a blocked path, a bot that
+            // stopped to fight): send it on again; the leash above handles one that drifted far.
+            if (!resident.AtSpot && !travelling && !player->isMoving() &&
+                resident.CrowdPhaseState == CrowdPhase::Linger)
+            {
+                Movement::MoveToPosition(player, hub->MapId, resident.TargetX, resident.TargetY, resident.TargetZ, resident.TargetO, false);
+                resident.LeashGraceUntil = nowSec + std::min<uint32>(120, 15 + static_cast<uint32>(distToTarget / 4.0f));
+                continue;
+            }
+
+            bool const venueBound = resident.Stationary ||
+                resident.Activity == CitizenActivity::ReleaseCycle ||
+                resident.Activity == CitizenActivity::InnDance ||
+                resident.Activity == CitizenActivity::FishAtDocks ||
+                isDedicatedPerformer;
+
             if (resident.AtSpot && resident.ActivityDurationMs &&
+                resident.Activity != CitizenActivity::ReleaseCycle &&
                 nowMs - resident.ActivityStartMs >= resident.ActivityDurationMs &&
                 !player->IsNonMeleeSpellCast(false) && !resident.ChatPartnerGuid &&
                 resident.CrowdPhaseState == CrowdPhase::Linger)
             {
                 if (Spot const* spot = FindSpot(resident.HubId, resident.SpotId))
                 {
-                    if (resident.Sitting)
+                    if (resident.Activity == CitizenActivity::InnDance)
                     {
-                        player->SetStandState(UNIT_STAND_STATE_STAND);
-                        resident.Sitting = false;
+                        if (!resident.Sitting)
+                        {
+                            // A set danced: bow or applaud and sit down for a rest.
+                            Activities::StopDance(player, resident);
+                            player->HandleEmoteCommand(roll_chance_i(50) ? EMOTE_ONESHOT_BOW : EMOTE_ONESHOT_APPLAUD);
+                            player->SetStandState(UNIT_STAND_STATE_SIT);
+                            resident.Sitting = true;
+                            resident.ActivityDurationMs = urand(60, 150) * 1000;
+                        }
+                        else
+                        {
+                            // Rested: stand up; ExecuteInnDance starts the next set.
+                            player->SetStandState(UNIT_STAND_STATE_STAND);
+                            resident.Sitting = false;
+                            resident.ActivityDurationMs = urand(60, 180) * 1000;
+                        }
+                        resident.ActivityStartMs = nowMs;
                     }
-                    Activities::StopDance(player, resident);
-                    resident.Role = DetermineRole(*hub, *spot, resident.Bot);
-                    resident.Activity = ChooseInitialActivity(resident.Role, *spot);
-                    resident.ActivityStartMs = nowMs;
-                    resident.ActivityDurationMs = urand(45, 180) * 1000;
+                    else if (resident.Activity == CitizenActivity::FishAtDocks)
+                    {
+                        if (!resident.Sitting)
+                        {
+                            // Fished a while: sit down by the water for a rest.
+                            player->HandleEmoteCommand(EMOTE_ONESHOT_NONE);
+                            player->SetStandState(UNIT_STAND_STATE_SIT);
+                            resident.Sitting = true;
+                            resident.ActivityDurationMs = urand(45, 120) * 1000;
+                        }
+                        else
+                        {
+                            player->SetStandState(UNIT_STAND_STATE_STAND);
+                            resident.Sitting = false;
+                            resident.ActivityDurationMs = urand(60, 180) * 1000;
+                        }
+                        resident.ActivityStartMs = nowMs;
+                    }
+                    else if ((resident.Activity == CitizenActivity::SitInTavern ||
+                              resident.Activity == CitizenActivity::DrinkInTavern) &&
+                             (resident.Stationary || !_roaming || !_actRoaming))
+                    {
+                        // Tavern regulars stay seated and alternate between sitting and drinking.
+                        resident.Activity = resident.Activity == CitizenActivity::SitInTavern ?
+                            CitizenActivity::DrinkInTavern : CitizenActivity::SitInTavern;
+                        resident.ActivityStartMs = nowMs;
+                        resident.ActivityDurationMs = urand(60, 180) * 1000;
+                    }
+                    else
+                    {
+                        if (resident.Sitting)
+                        {
+                            player->SetStandState(UNIT_STAND_STATE_STAND);
+                            resident.Sitting = false;
+                        }
+                        Activities::StopDance(player, resident);
+                        player->HandleEmoteCommand(EMOTE_ONESHOT_NONE);
+
+                        // Done here: a roaming resident moves on to its next activity at once.
+                        if (!venueBound && _roaming && _actRoaming)
+                        {
+                            RelocateResident(resident, *hub);
+                            continue;
+                        }
+
+                        resident.Role = DetermineRole(*hub, *spot, resident.Bot);
+                        resident.Activity = ChooseInitialActivity(resident.Role, *spot);
+                        resident.ActivityStartMs = nowMs;
+                        resident.ActivityDurationMs = urand(45, 180) * 1000;
+                    }
                 }
             }
             // Roaming relocation
-            if (_roaming && _actRoaming && !resident.Stationary && resident.NextMoveAt <= nowSec)
+            if (_roaming && _actRoaming && !venueBound && resident.NextMoveAt <= nowSec)
             {
                 RelocateResident(resident, *hub);
                 continue;
@@ -2090,13 +2509,9 @@ namespace CityLife
                         Activities::ExecuteLivingCrowd(resident, player, *hub, nowMs, _chatScriptedConversations,
                             _chatSayCooldownSec, _crowdPlayerRadius, _crowdChatCooldownSec, _crowdAfkMinSec, _crowdAfkMaxSec, _activitiesAfkEnable);
                     break;
-                case CitizenActivity::Duel:
-                    if (_actDuels)
-                        Activities::ExecuteDuel(resident, player, *hub, nowMs, _duelCooldownSec, _duelRealPlayerCooldownSec, _duelMaxDistance, _duelMeetingPoint);
-                    break;
                 case CitizenActivity::WatchDuels:
                     if (_actDuelWatching)
-                        Activities::ExecuteDuelSpectator(resident, player, *hub, nowMs);
+                        Activities::ExecuteDuelSpectator(resident, player, *hub, nowMs, _spectatorWatchRadius);
                     break;
                 case CitizenActivity::FishAtDocks:
                     if (_actFishing)
@@ -2138,6 +2553,16 @@ namespace CityLife
                     if (_actFoodVendor)
                         Activities::ExecuteBuyFood(resident, player, *hub, nowMs, _enableInteractions && _enableBuyFood);
                     break;
+                case CitizenActivity::WanderDistrict:
+                    if (_actRoaming && MsReached(nowMs, resident.NextEmoteAtMs))
+                    {
+                        Activities::ExecuteRandomEmote(resident, player, *hub, nowMs);
+                        resident.NextEmoteAtMs = nowMs + urand(_emoteMinSeconds, _emoteMaxSeconds) * 1000;
+                    }
+                    break;
+                case CitizenActivity::ReleaseCycle:
+                    Activities::ExecuteReleaseCycle(resident, player, *hub, nowMs);
+                    break;
                 case CitizenActivity::RandomEmote:
                 default:
                     if (_actRandomEmotes && MsReached(nowMs, resident.NextEmoteAtMs))
@@ -2147,53 +2572,6 @@ namespace CityLife
                     }
                     break;
             }
-        }
-    }
-
-    void Manager::MaintainDuels()
-    {
-        uint32 nowMs = GameTimeMS();
-        for (Resident& resident : _residents)
-        {
-            Hub* hub = FindHub(resident.HubId);
-            Player* player = FindPlayer(resident.Bot.GuidLow);
-            if (!hub || !player || player->IsBeingTeleported() ||
-                !PlayerbotsLife::ValidateActiveLease(resident.Token) ||
-                !IsResidentUsable(player, player->duel != nullptr || resident.DuelMeetingSet))
-                continue;
-
-            if (player->duel)
-            {
-                if (_actDuels)
-                    Activities::DriveActiveDuel(resident, player, *hub, nowMs, _duelMaxDistance, _duelTacticalRange,
-                        _duelAllowPlayerChallenge);
-                continue;
-            }
-
-            // Duel over (or never delivered): clear the pairing whatever the resident's activity, so
-            // a later challenge from anyone is accepted again.
-            if (!resident.DuelMeetingSet && (resident.DuelPartnerGuid || resident.CoreDuelArbiter))
-            {
-                if (resident.DuelStagingSlotId)
-                {
-                    PlayerbotsLife::ReleaseDuelStagingSlot(resident.DuelStagingSlotId, PlayerbotsLife::ReservationOwner::CityLife);
-                    resident.DuelStagingSlotId = 0;
-                }
-                if (resident.DuelPairId)
-                {
-                    PlayerbotsLife::ReleaseDuelStagingSlotByPair(resident.DuelPairId, PlayerbotsLife::ReservationOwner::CityLife);
-                    resident.DuelPairId = 0;
-                }
-                resident.DuelPartnerGuid = 0;
-                resident.CoreDuelArbiter = 0;
-                resident.DuelState = DuelPairState::None;
-                resident.DuelInitiator = false;
-                resident.DuelCooldownUntilMs = nowMs + _duelCooldownSec * IN_MILLISECONDS;
-                continue;
-            }
-
-            if (resident.DuelMeetingSet && _actDuels && !player->IsInCombat() && !player->IsInFlight())
-                Activities::ExecuteDuel(resident, player, *hub, nowMs, _duelCooldownSec, _duelRealPlayerCooldownSec, _duelMaxDistance, _duelMeetingPoint);
         }
     }
 
@@ -2342,19 +2720,10 @@ namespace CityLife
             _startupElapsedMs += diff;
             return;
         }
-        // Duels (countdown ~3 s, rendezvous 15 s, kiting) need a finer cadence than the
-        // management tick; everything else stays on the tick.
-        _duelTimerMs += diff;
-        if (_duelTimerMs >= 1000)
-        {
-            _duelTimerMs = 0;
-            MaintainDuels();
-        }
         if (managementTick)
         {
             uint32 nowSec = GameTimeSeconds();
             PlayerbotsLife::ScavengeStaleLeases(nowSec);
-            PlayerbotsLife::PruneRealPlayerCooldowns(nowSec);
             MaintainPopulation();
             MaintainResidents();
         }
@@ -2370,11 +2739,11 @@ namespace CityLife
             (startupTarget - _startupElapsedMs + 999) / 1000 : 0;
         uint32 liveBots = GetLiveWorldBotCount();
         handler->PSendSysMessage(
-            "City Life: enabled={} DB={} startup={}s residents={}/{} (live bots={}) time={}% hubs={} crowd={} duels={}",
+            "City Life: enabled={} DB={} startup={}s residents={}/{} (live bots={}) time={}% hubs={} crowd={}",
             _enable ? 1 : 0, _databaseReady ? "ready" : "missing", startupLeft,
             _residents.size(), _maxTotalPopulation == 0 ? "uncapped" : std::to_string(_maxTotalPopulation).c_str(),
             liveBots, CurrentTimeMultiplier(), _hubs.size(),
-            _crowdEnable ? 1 : 0, _actDuels ? 1 : 0);
+            _crowdEnable ? 1 : 0);
         for (Hub const& hub : _hubs)
         {
             handler->PSendSysMessage("{} [{}] lvl {}-{} cfg={} target={} current={} spots={}",
@@ -2396,23 +2765,24 @@ namespace CityLife
             _baselinePercent, _burstGraceSeconds);
         handler->PSendSysMessage("LivingCrowd: AwakeRadius={}yd ChatCooldown={}s AFK={}-{}s",
             _crowdPlayerRadius, _crowdChatCooldownSec, _crowdAfkMinSec, _crowdAfkMaxSec);
-        handler->PSendSysMessage("Duels: Cooldown={}s RealPlayerCooldown={}s MaxDist={:.1f}yd AllowPlayer={} BotChallengeReal={}",
-            _duelCooldownSec, _duelRealPlayerCooldownSec, _duelMaxDistance, _duelAllowPlayerChallenge ? 1 : 0, _duelBotChallengeRealPlayer ? 1 : 0);
         handler->PSendSysMessage("Active Residents by Role:");
 
-        uint32 crowdCount = 0, duelCount = 0, fisherCount = 0, dancerCount = 0, flexCount = 0;
+        uint32 crowdCount = 0, plazaCount = 0, spectatorCount = 0, fisherCount = 0, dancerCount = 0, flexCount = 0;
         for (Resident const& r : _residents)
         {
             switch (r.Role)
             {
                 case CitizenRole::Crowd: ++crowdCount; break;
-                case CitizenRole::GateDuelist:
-                case CitizenRole::GoldshireDuelist: ++duelCount; break;
+                case CitizenRole::PlazaTalker: ++plazaCount; break;
+                case CitizenRole::Spectator: ++spectatorCount; break;
                 case CitizenRole::Fisher: ++fisherCount; break;
                 case CitizenRole::InnDancer: ++dancerCount; break;
                 default: ++flexCount; break;
             }
         }
+        handler->PSendSysMessage("  Crowd={} Plaza={} Spectators={} Fishers={} Dancers={} Citizens={}",
+            crowdCount, plazaCount, spectatorCount, fisherCount, dancerCount, flexCount);
+        // Duel slots are mod-hearthside-pvp's; the registry is shared.
         PlayerbotsLife::CooperationSnapshot snap = PlayerbotsLife::GetCooperationSnapshot();
         handler->PSendSysMessage("Cooperation: Reserved Total={} (City={}, PvP={}) | Leases: Prov={} Active={} Rel={} | DuelSlots={}",
             snap.TotalReserved, snap.CityLifeCount, snap.PvPLifeCount,
@@ -2548,7 +2918,12 @@ namespace CityLife
         {
             if (resident.Bot.GuidLow == guidLow)
             {
-                return resident.Activity == CitizenActivity::Duel;
+                // The scripted scenes: crowd and plaza chat, inn dancing, tavern drinking, cheering duels.
+                return resident.Activity == CitizenActivity::CrowdSocial ||
+                       resident.Activity == CitizenActivity::PlazaSocial ||
+                       resident.Activity == CitizenActivity::InnDance ||
+                       resident.Activity == CitizenActivity::DrinkInTavern ||
+                       resident.Activity == CitizenActivity::WatchDuels;
             }
         }
         return false;

@@ -6,11 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `mod-hearthside-city` is an AzerothCore (WotLK 3.3.5a) worldserver module that borrows idle
 random playerbots from `mod-playerbots` and parks them in cities as "residents" (wandering
-districts, standing at AH/bank/mail spots, taverns, fishing, gate duels). It is a fork of upstream
+districts, standing at AH/bank/mail spots, taverns, fishing, watching the gate duels). It is a fork of upstream
 `mod-playerbots-city-life` by iCore, adapted to this workspace's core
 (`../azerothcore-wotlk-pb`) and `../mod-playerbots`. Sibling repo `../mod-hearthside-pvp` is the
 matching fork of `mod-playerbots-pvp-life`; the two coexist through a shared reservation registry
 (below).
+
+Upstream is the `upstream` remote (Ildourol/mod-playerbots-city-life); its commits are reviewed and
+ported one by one rather than merged (duels and the telemetry bridge were dropped here, see
+Architecture). Synced through upstream `7456568` (2026-10-12).
 
 Upstream names were deliberately kept everywhere except the loader: config file
 `mod_playerbots_city_life.conf`, keys `CityLife.*`, GM command `.citylife`, log line
@@ -48,10 +52,10 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
 ## Architecture
 
 - **Entry points** (`mod_playerbots_city_life.cpp`): `AddCityLifeScripts()` checks the registry
-  protocol and registers the telemetry bridge (the active-module flag is set by `LoadConfig` only
-  while the module is enabled and its tables exist), a `WorldScript` (config load → `LoadConfig`, `OnUpdate` → `Update`,
+  protocol (the active-module flag is set by `LoadConfig` only while the module is enabled and its
+  tables exist), and registers a `WorldScript` (config load → `LoadConfig`, `OnUpdate` → `Update`,
   shutdown), a `PlayerScript` (login/logout/zone tracking of real players, trade blocking,
-  achievement suppression for residents in duels), a `GroupScript` (a resident joining a group
+  achievement suppression for residents in scripted scenes), a `GroupScript` (a resident joining a group
   with a real player is disengaged at once) and the `.citylife` `CommandScript`. All logic lives
   in the `CityLife::Manager` singleton (`sCityLifeMgr`).
 - **`CityLifeMgr.cpp`** (~2.6k lines) is the whole lifecycle. `Update()` pumps async DB callbacks
@@ -59,7 +63,11 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   `DisabledWithoutRealPlayerLoginDelay`), then every `_tickSeconds` runs `MaintainPopulation()`
   (budget/time-of-day/demand → per-hub targets → candidate scan → admission requests) and
   `MaintainResidents()` (per-resident activity state machine, relocation, emotes, lease refresh).
-  Changes per tick are capped by `_maxChangesPerTick`.
+  Changes per tick are capped by `_maxChangesPerTick`. A roaming resident that finishes an
+  activity picks the next by weight (`PickNextActivity`, `CityLife.Weight.*`) and a spot for it
+  (`ChooseSpotForActivity`, class-district matching for trainers); fishers and inn dancers stay
+  at their venue and alternate with sitting; an expired residence ends asleep at an inn
+  (`ReleaseCycle`, `FindInnBedSpot`) before the release.
 - **Admission is two-phase**: `MaintainPopulation` queues an admission request with the shared
   registry; `ResolveAdmissionRequests` grants a *Provisional* lease; `ProcessAdmissionGrants` takes
   the grant and `AdmitResident` promotes it to *Active*, snapshots the bot's original position, and
@@ -69,16 +77,17 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   re-validate its lease (`ValidateActiveLease` / `ValidateResidentAction`); a lost lease means
   another module or a real player now owns the bot.
 - **`LifeBotReservation.h`**: header-only, process-wide registry (owners, leases with generations,
-  admission arbitration, duel staging slots on a 20yd lattice, real-player challenge cooldowns)
-  shared with `mod-hearthside-pvp`/artisans. Because both modules compile into one binary, the
+  admission arbitration, duel staging slots on a 20yd lattice, real-player challenge cooldowns --
+  the last two used only by `mod-hearthside-pvp` now) shared with `mod-hearthside-pvp`/artisans. Because both modules compile into one binary, the
   copies must stay **byte-compatible**; `AddCityLifeScripts()` calls `CheckProtocolVersion()`, which
   logs an error when another Life module registered a different `LIFE_BOT_RESERVATION_PROTOCOL_VERSION`.
   Change it in both repos together and bump the version.
-- **`LifeTelemetryBridge.h`**: header-only addon telemetry (`LIFE335\t...` addon whispers,
-  WELCOME/CAPACITY frames) for a client addon; also shared with the sibling modules, registered once
-  via the registry's `TelemetryBridgeRegistered` flag.
-- **`CityLifeActivities.*`** (crowd chat/AFK, duels: meet point, ranged vs. melee spacing,
-  spectators), **`CityLifeMovement.*`** (pathing validation, water/canal avoidance, mounting, sink
+- **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
+  bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
+  the spectator role (`CitizenRole::Spectator`, `WatchDuels`): residents of hubs whose name contains
+  "gate" or "duel" (`Hub::DuelHub`) or at `DuelRing` spots watch any duel in progress nearby.
+- **`CityLifeActivities.*`** (crowd chat/AFK, duel spectators, fishing, inn dancing, tavern, NPC
+  and mailbox visits, wall patrol, the inn sleep before release), **`CityLifeMovement.*`** (pathing validation, water/canal avoidance, mounting, sink
   detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums), `CityLifeDialogues.h`
   and `CityLifePopulation.h` (static data tables).
 - **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
@@ -110,4 +119,4 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
 - Every new config key goes in `conf/mod_playerbots_city_life.conf.dist` with a comment, and is read
   in `Manager::LoadConfig()` (re-run on `.reload config` via `OnAfterConfigLoad`).
 - Keep the README's invariants: borrow bots as-is (no level/talent/stat changes), never touch real
-  players or player-owned bots, exempt GMs from challenges/whispers, chatter defaults off.
+  players or player-owned bots, exempt GMs from greetings/whispers, chatter and economic interactions default off.

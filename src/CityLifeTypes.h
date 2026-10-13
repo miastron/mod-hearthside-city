@@ -34,8 +34,7 @@ namespace CityLife
         Flex = 0,
         InnDancer = 1,
         PlazaTalker = 2,
-        GateDuelist = 3,
-        GoldshireDuelist = 4,
+        Spectator = 3, // watches mod-hearthside-pvp's gate and Goldshire duels
         Fisher = 5,
         Crowd = 6
     };
@@ -53,11 +52,10 @@ namespace CityLife
         DrinkInTavern = 8,
         WalkCityWalls = 9,
         ReturnToInn = 10,
-        ReleaseCycle = 11,
+        ReleaseCycle = 11, // residence over: asleep in an inn bed until the release
         RandomEmote = 12,
         FishAtDocks = 13,
         Idle = 14,
-        Duel = 15,
         InnDance = 16,
         PlazaSocial = 17,
         CrowdSocial = 18
@@ -74,7 +72,7 @@ namespace CityLife
         WallPatrol = 6,
         Plaza = 7,
         Vendor = 8,
-        DuelRing = 9,
+        DuelRing = 9, // spectator stand at a mod-hearthside-pvp duel zone
         InnBed = 10,
         Bank = 11
     };
@@ -139,7 +137,7 @@ namespace CityLife
         uint32 Priority = 100;
         bool UseTimeScaling = true;
         uint32 ResidenceSeconds = 0;
-        bool DuelHub = false;
+        bool DuelHub = false; // gate/Goldshire duel ground: every resident is a spectator
         bool SocialHub = false;
         std::vector<Spot> Spots;
     };
@@ -152,18 +150,6 @@ namespace CityLife
         uint8 Level = 1;
         uint8 Race = 0;
         TeamSide Team = TeamSide::Any;
-    };
-
-    enum class DuelPairState : uint8
-    {
-        None = 0,
-        Rendezvous = 1,
-        Challenged = 2,
-        Countdown = 3,
-        InProgress = 4,
-        Active = 4,
-        Recovering = 5,
-        Closed = 6
     };
 
     struct ResidentMutationJournal
@@ -231,27 +217,11 @@ namespace CityLife
         int16 ChatDialogueId = -1;
         bool ChatInitiator = false;
 
-        // Paired Duel & Tactical Combat State
-        uint64 DuelPairId = 0;
-        uint64 CoreDuelArbiter = 0;
-        DuelPairState DuelState = DuelPairState::None;
-        uint32 DuelPartnerGuid = 0;
-        uint32 DuelStateMs = 0; // when a challenge this resident sent began waiting for an answer
-        uint32 DuelCooldownUntilMs = 0;
-        bool DuelInitiator = false;
-        float DuelMeetX = 0.0f;
-        float DuelMeetY = 0.0f;
-        float DuelMeetZ = 0.0f;
-        bool DuelMeetingSet = false;
-        uint32 DuelRendezvousDeadlineMs = 0;
-        uint32 DuelLastRepositionMs = 0;
-
         // Alternating District Roam State
         bool LastRoamWasHub = false;
 
         // Tokenized Cooperation Lease & State Mutation Journal
         PlayerbotsLife::LeaseToken Token;
-        uint32 DuelStagingSlotId = 0;
         ResidentMutationJournal Journal;
     };
 }

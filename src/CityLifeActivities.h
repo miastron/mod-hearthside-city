@@ -23,25 +23,9 @@ namespace CityLife
                                 uint32 chatCooldownSec, uint32 afkMinSec, uint32 afkMaxSec,
                                 bool enableAfk = true);
 
-        void ExecuteDuel(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                         uint32 duelCooldownSec, uint32 realPlayerCooldownSec, float duelMaxDist, bool meetingPointEnabled = true);
-
-        void ExecuteDuelSpectator(Resident& resident, Player* bot, Hub const& hub, uint32 now);
-
-        // Tactical Duel Behaviors & Rendezvous
-        void ComputeDuelMeetPoint(Player* bot, Player* opponent, Spot const& anchorSpot,
-                                  float maxDistance, float& meetX, float& meetY, float& meetZ);
-        void ComputeDuelStandPoint(Player* bot, Player* opponent, float meetX, float meetY,
-                                   float meetZ, float& standX, float& standY, float& standZ);
-        bool IsRangedDueler(Player* bot);
-        bool IsMeleeDueler(Player* bot);
-        bool MoveToRangedDuelDistance(Player* bot, Resident& resident, Player* opponent,
-                                      Spot const* anchorSpot, float leashRadius);
-        // acceptPlayerChallenges = CityLife.Duels.AllowPlayerChallenge: a challenge from a human is
-        // accepted only when it is set; one this module did not arrange is otherwise declined.
-        void DriveActiveDuel(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                             float leashRadius, bool tacticalRange, bool acceptPlayerChallenges);
-        void CancelCityDuel(Player* bot, char const* reason);
+        // Faces the nearest duel in progress within watchRadius (mod-hearthside-pvp's, or any other)
+        // and cheers it on; with no duel running the spectator just waits at its stand.
+        void ExecuteDuelSpectator(Resident& resident, Player* bot, Hub const& hub, uint32 now, float watchRadius);
 
         void ExecuteFishing(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
@@ -62,6 +46,8 @@ namespace CityLife
         void ExecuteBuyFood(Resident& resident, Player* bot, Hub const& hub, uint32 now, bool enableInteractions);
 
         void ExecuteWallPatrol(Resident& resident, Player* bot, Hub const& hub, uint32 now);
+
+        void ExecuteReleaseCycle(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
         void ExecuteRandomEmote(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 

@@ -5,7 +5,7 @@
 Repository/module name: `mod-playerbots-city-life`  
 Created by **iCore**. Incorporates 100% of capabilities and micro-behaviors from `mod-city-bots`.
 
-City Life populates capitals, towns, and popular social hubs with configurable AzerothCore Playerbots. It makes cities feel lively, bustling, and immersive: residents wander between districts, shop at market stalls, socialize in taverns, fish along city waterways, and spar in duel rituals outside capital gates.
+City Life populates capitals, towns, and popular social hubs with configurable AzerothCore Playerbots. It makes cities feel lively, bustling, and immersive: residents wander between districts, shop at market stalls, socialize in taverns, fish along city waterways, and gather to cheer the duels outside the capital gates.
 
 **Single Installed Module Requirement:** Users install only `mod-playerbots-city-life` alongside AzerothCore and `mod-playerbots`. `mod-city-bots` is completely unnecessary and should not be installed or enabled.
 
@@ -15,19 +15,18 @@ City Life populates capitals, towns, and popular social hubs with configurable A
 
 - **Living Urban Population:** Per-hub population settings across 16+ bundled cities and hubs (Stormwind, Orgrimmar, Ironforge, Undercity, Darnassus, Thunder Bluff, Exodar, Silvermoon, Shattrath, Dalaran, Gadgetzan, Goldshire, Honor Hold, Thrallmar, Wintergrasp camps).
 - **Multi-District Exploration:** Bots periodically explore alternating districts (e.g. Mage Quarter -> Trade District -> Old Town -> Cathedral Square) rather than staying fixed to one area.
-- **Capital Gate Duel Rituals:** Bots organize friendly duels outside Stormwind and Orgrimmar gates, calculating a fair midpoint rendezvous, planting duel flags, and fighting until victory/defeat.
-- **Tactical Combat Range-Keeping:** Duel participants respect tactical spacing—melee bots press close, while casters and hunters backpedal to keep optimal 15–25 yard engagement distance.
+- **Duel Spectators:** Residents gather at the duel grounds outside the Stormwind and Orgrimmar gates and in Goldshire, face the nearest duel in progress and cheer it on, stepping back when a fight comes too close. The duels themselves are `mod-hearthside-pvp`'s (`PvPLife.Duel.*`); City Life runs none.
+- **Civic Routines:** Roaming residents pick their next activity by configurable weights (`CityLife.Weight.*`): visiting their own class trainer, the mailbox, the auction house or a food vendor, sitting or drinking in a tavern (on a chair when one is near), walking the walls, fishing at the docks. Inn dancers and fishers rest between sets; a resident whose stay is over sleeps at the inn before it leaves.
 - **Canal Water Avoidance:** Automated terrain and water-depth detection prevents bots from falling into Stormwind canals or drowning, automatically snapping waypoints to dry quays and stone bridges.
 - **Weighted Hotspot Distribution:** Dynamic distribution across functional categories: `auction`, `bank`, `mail`, `flight`, `square`, `tavern`, and `travel`. Auction house and bank spots receive boosted weighting with stationary patron ratios.
 - **Time-of-Day Dynamic Scaling:** Realistic morning, daytime, evening, and nighttime population curves with gradual arrivals and departures.
 - **Mutual Anti-Stealing Reservation Barrier:** Thread-safe, standalone-safe shared reservation registry (`PlayerbotsLife::ReservationRegistry`) ensuring bots reserved by City Life are never stolen or commanded by `mod-playerbots-pvp-life`, and vice versa.
 - **Conservative Population Borrowing Budget:** Strict default cap of 10% eligible pool / 120 bots max (configured for a 1,000-bot server) guarantees that ≥ 80% (800+ bots) of random playerbots remain completely free to roam, quest, run dungeons, and engage in open-world activities.
 - **Zero Bot Tampering Invariant:** Bots are borrowed strictly AS-IS from the natural Playerbot pool with zero artificial level modifications, zero talent changes, and zero stat inflation.
-- **Zero GM Spam Protection:** Game Masters and administrators are strictly exempt from unsolicited duel challenges, whispers, or broadcasts.
-- **Silent-by-Default Operation:** All ambient chatter, scripted dialogues, and greetings default to OFF (`0`) in config for a completely unobtrusive server experience out of the box.
+- **Zero GM Spam Protection:** Game Masters and administrators are strictly exempt from greetings, whispers, or broadcasts.
+- **Silent-by-Default Operation:** All ambient speech, scripted dialogues, and greetings default to OFF (`0`) in config for a completely unobtrusive server experience out of the box.
 - **Instant Disengagement on Invite or Logout:** Residents immediately drop city behaviors if invited to a player group, commanded by an owner, or logged out.
-- **Shared Duel Staging Lattice (20yd Spacing):** Prevents duel ring overlap outside capital gates when running alongside `mod-playerbots-pvp-life`.
-- **Zero Feature Suppression Coexistence:** Fully compatible with `mod-playerbots-pvp-life`. Both modules can run simultaneously—including dueling outside capital gates—without disabling or yielding any features.
+- **Coexistence with `mod-hearthside-pvp`:** Both modules run side by side on one shared reservation registry; PvP Life runs the duels and City Life sends the crowd.
 - **Comprehensive GM Commands:** Real-time runtime tools for tuning hubs, recording exact hotspot coordinates in-game, and monitoring system health.
 
 ---
@@ -60,7 +59,7 @@ City Life populates capitals, towns, and popular social hubs with configurable A
 
 `mod-playerbots-city-life` and `mod-playerbots-pvp-life` are architected for seamless, zero-conflict simultaneous execution:
 - **Zero Feature Suppression:** Neither module disables or yields any feature for the other.
-- **Concurrent Capital Gate Duels:** Both modules host dueling outside city gates simultaneously. Each module pairs and manages only its own claimed bots.
+- **Duels belong to PvP Life:** PvP Life's StormwindDuel, OrgrimmarDuel and GoldshireDuel zones run the duels; City Life's StormwindGate, OrgrimmarGate and GoldshireDuel hubs only hold spectators. Without PvP Life the spectators simply wait at their stands.
 - **Candidate Scanning Isolation:** During candidate scanning, each module verifies `!PlayerbotsLife::IsReserved(guid)` before borrowing a bot.
 - **Shared Reservation Registry:** `src/LifeBotReservation.h` provides an atomic, mutex-guarded process-wide singleton that registers active modules and tracks ownership cleanly.
 - **Independent Execution:** If only one module is installed, it runs completely standalone with zero dependencies or overhead.
