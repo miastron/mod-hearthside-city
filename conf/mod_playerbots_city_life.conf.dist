@@ -202,8 +202,8 @@ CityLife.Activities.AFK.Enable = 1
 # Idle Antics (src/LifeMotion.h, shared with mod-hearthside-pvp)
 ###################################################################################################
 
-# A resident standing about at a wander or emote spot now and then plays out an antic instead of a
-# plain emote: Dance (/dance), Strafe (quick side-to-side steps, facing fixed), HopBackForth (hops
+# A resident standing about at a wander, emote or duel-spectator spot now and then plays out an antic
+# instead of a plain emote or cheer: Dance (/dance), Strafe (quick side-to-side steps, facing fixed), HopBackForth (hops
 # forward and back, either backpedalling or turning round between hops), HopSideToSide (strafe hops)
 # or BunnyHop (hop after hop round a circle, a figure 8 or a zigzag). It stops at once for combat, a
 # duel, a real player taking the bot over, or mod-playerbots pausing it, and walks back to its spot.

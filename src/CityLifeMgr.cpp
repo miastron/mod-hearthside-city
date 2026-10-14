@@ -2524,6 +2524,8 @@ namespace CityLife
                             _chatSayCooldownSec, _crowdPlayerRadius, _crowdChatCooldownSec, _crowdAfkMinSec, _crowdAfkMaxSec, _activitiesAfkEnable);
                     break;
                 case CitizenActivity::WatchDuels:
+                    if (_actDuelWatching && TryStartAntic(resident, player, nowMs))
+                        break;
                     if (_actDuelWatching)
                         Activities::ExecuteDuelSpectator(resident, player, *hub, nowMs, _spectatorWatchRadius);
                     break;
@@ -2683,7 +2685,11 @@ namespace CityLife
                 resident.Journal.OriginalNonCombatStrategies = beforeStrategies;
             }
 
-            std::string strategiesToApply = _nonCombatStrategies;
+            // -mount: City Life mounts residents itself for long legs (Movement::TryMount). With
+            // mod-playerbots' own mount check left on, an idle resident outdoors is remounted on its
+            // timer, which casts over a hop in mid-air and undoes every arrival dismount (realm
+            // 2026-10-14: a resident mounting and dismounting over and over). The journal restores it.
+            std::string strategiesToApply = _nonCombatStrategies + ",-mount";
             if (!_chatScriptedConversations && !_chatGreetings && !_chatUnrestricted)
                 strategiesToApply += ",-chat,-emote";
 

@@ -15,6 +15,7 @@
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "MotionMaster.h"
+#include "MoveSpline.h"
 #include "MoveSplineInit.h"
 #include "MovementTypedefs.h"
 #include "Player.h"
@@ -74,7 +75,7 @@ namespace LifeMotion
         bool Jumped = false;
     };
 
-    // One move: refused (false) if the spot is unreachable, in water, a ledge away or outside the bound.
+    // One move: refused (false) if the spot is unreachable, water entered from dry land, a ledge away or outside the bound.
     // A run bends around From in angle and radius (From = the bot's own position runs straight), so
     // circling an opponent follows it and a back-off runs straight out; facing a target or holding a
     // facing while moving away from it backpedals.
@@ -89,7 +90,8 @@ namespace LifeMotion
             return false;
         if (bound.HomeRadius > 0.0f && std::hypot(x - bound.HomeX, y - bound.HomeY) > bound.HomeRadius)
             return false;
-        if (bot->GetMap()->IsInWater(bot->GetPhaseMask(), x, y, z, bot->GetCollisionHeight()))
+        // Never from dry land into water; a bot already in it may still move (and so get back out).
+        if (!bot->IsInWater() && bot->GetMap()->IsInWater(bot->GetPhaseMask(), x, y, z, bot->GetCollisionHeight()))
             return false;
         float step = bot->GetExactDist2d(x, y);
         if (step < 1.0f)
@@ -479,8 +481,11 @@ namespace LifeMotion
             bot->IsBeingTeleported() || bot->IsInFlight() || bot->IsNonMeleeSpellCast(false) ||
             bot->HasUnitState(UNIT_STATE_ROOT | UNIT_STATE_STUNNED | UNIT_STATE_CONFUSED | UNIT_STATE_FLEEING))
             return false;
+        // A hop or step under way always lands first: ending it in mid-air hands the bot back to
+        // module or mod-playerbots code that stops it dead, and it drops straight down.
+        bool airborne = !bot->movespline->Finalized();
         if (Reached(now, r.EndMs))
-            return false;
+            return airborne && !Reached(now, r.EndMs + 3000);
         if (!Reached(now, r.NextMs))
             return true;
 
@@ -512,8 +517,13 @@ namespace LifeMotion
                     r.NextMs = now + uint32(std::clamp(landing.DurationMs * 2 / 5, 200, 400));
                     return true;
                 }
-                Dismount(bot);
-                return false;
+                if (r.Step == 1)
+                {
+                    Dismount(bot);
+                    r.Step = 2;
+                }
+                // Then carry on through the rest of the arc and end only on landing.
+                return airborne;
             }
             case Antic::Dance:
                 if (!r.Dancing)

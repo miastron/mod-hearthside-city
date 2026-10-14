@@ -87,7 +87,7 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   `Launch` is one validated move (jump or curve, facing a unit, a held angle or the way it goes)
   that mod-playerbots is told to wait out; PvP's duel footwork is built on it. `Routine` plays the
   idle antics (Dance, Strafe, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
-  arrivals): `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
+  arrivals), started at wander, random-emote and duel-spectator spots: `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
   resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
 - **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
   bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
