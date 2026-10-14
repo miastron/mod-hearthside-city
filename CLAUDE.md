@@ -1,172 +1,92 @@
-# CLAUDE.md
+# mod-hearthside-city
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+AzerothCore (WotLK 3.3.5a) module that borrows idle random playerbots and parks them in cities as
+residents: wandering districts, AH/bank/mail spots, taverns, fishing, watching gate duels. Fork of
+upstream `mod-playerbots-city-life` (iCore; `upstream` remote, Ildourol). Upstream commits are
+reviewed and ported one by one, never merged; synced through `7456568` (2026-10-12).
 
-## What this is
+## The Hearthside collection
 
-`mod-hearthside-city` is an AzerothCore (WotLK 3.3.5a) worldserver module that borrows idle
-random playerbots from `mod-playerbots` and parks them in cities as "residents" (wandering
-districts, standing at AH/bank/mail spots, taverns, fishing, watching the gate duels). It is a fork of upstream
-`mod-playerbots-city-life` by iCore, adapted to this workspace's core
-(`../azerothcore-wotlk-pb`) and `../mod-playerbots`. Sibling repo `../mod-hearthside-pvp` is the
-matching fork of `mod-playerbots-pvp-life`; the two coexist through a shared reservation registry
-(below).
-
-Upstream is the `upstream` remote (Ildourol/mod-playerbots-city-life); its commits are reviewed and
-ported one by one rather than merged (duels and the telemetry bridge were dropped here, see
-Architecture). Synced through upstream `7456568` (2026-10-12).
-
-Upstream names were deliberately kept everywhere except the loader: config file
-`mod_playerbots_city_life.conf`, keys `CityLife.*`, GM command `.citylife`, log line
-`>> Loaded mod-playerbots-city-life`, `module-info.json`. Don't "finish the rename" without being
-asked: operators' existing configs depend on those names.
+| Module | Role |
+|---|---|
+| `mod-hearthside-life` | Coordinator: the shared `Life*.h` headers and their state. City and PvP require it. |
+| `mod-hearthside-chat` | All bot speech. Talks to Life through `hs_life.*`; never included by the others. |
+| `mod-hearthside-city` | Bots as city residents (this repo). |
+| `mod-hearthside-pvp` | Bots in world PvP and duels (fork of `mod-playerbots-pvp-life`). |
 
 ## Build
 
-There is no standalone build and no test suite. The module compiles into AzerothCore's `modules`
-target when placed at `azerothcore-wotlk/modules/mod-hearthside-city/` (`CMakeLists.txt` just
-calls `AC_ADD_SCRIPT` on `src/` and `AC_ADD_CONFIG_FILE` on the `.conf.dist`). Compiling,
-restarting the worldserver and anything touching MySQL happen on the test realm; see
-`../mod-hearthside-chat/CLAUDE.md` for the realm and the local MSVC toolchain notes. Label any
-runtime claim you could not exercise as unverified.
+No standalone build, no tests. Compiles into AzerothCore's `modules` target; building, restarting
+and MySQL happen on the test realm (see `../mod-hearthside-chat/CLAUDE.md`). Label any runtime
+claim you could not exercise as unverified.
 
-- **The loader function name is derived from the directory name.** AzerothCore calls
-  `Add<dir_name_with_underscores>Scripts()`, so `src/playerbots_city_life_loader.cpp` must define
-  `Addmod_hearthside_cityScripts()`. Renaming the directory means renaming this function.
-- Adding a new `.cpp` forces a CMake re-run (glob) and a full rebuild of `modules` on the realm;
-  a new header doesn't.
+- The loader `Addmod_hearthside_cityScripts()` (`src/playerbots_city_life_loader.cpp`) is named
+  after the folder; renaming one means renaming the other.
+- A new `.cpp` forces a CMake re-run and a full rebuild of `modules`; a new header does not.
+- Everything else keeps upstream names on purpose (`CityLife.*` keys,
+  `mod_playerbots_city_life.conf`, `.citylife`, the `>> Loaded` line, `module-info.json`):
+  operators' configs depend on them. Don't finish the rename unless asked.
 
-## Core API drift (this core vs. what upstream was written against)
+## Core API drift
 
-Most local diffs from upstream are adaptations to these. Use the local forms:
+Use the local forms, not upstream's:
 
-- No `WorldSession::IsBot()`. Use `CityLife::IsBotSession(player)` (`CityLifeMgr.cpp`), which
-  checks the random-bot account list / addclass bots. `::IsRealPlayer()` alone is wrong during
-  login: mod-playerbots attaches its AI *after* `OnPlayerLogin`, so every bot looks human then.
+- No `WorldSession::IsBot()`: use `CityLife::IsBotSession(player)`. `IsRealPlayer()` alone is wrong
+  at login, since mod-playerbots attaches its AI after `OnPlayerLogin`.
 - `Acore::StringFormat(...)`, not `Acore::String::Format(...)`.
-- `GameTime::GetGameTime()` / `GetGameTimeMS()` return durations: call `.count()`.
-- mod-playerbots renamed config keys `AiPlayerbot.*` → `Playerbots.*` and `PlayerbotAIConfig`
-  members to UpperCamelCase (its PR #2854). Read its current headers before touching either;
-  `ImportPlayerbotDefaults()` reads the new key with the old one as fallback.
+- `GameTime::GetGameTime()`/`GetGameTimeMS()` return durations: call `.count()`.
+- mod-playerbots renamed keys `AiPlayerbot.*` → `Playerbots.*` and `PlayerbotAIConfig` members to
+  UpperCamelCase (its PR #2854). Read its current headers first.
+
+## Shared Life headers
+
+- They are `../mod-hearthside-life`'s, included as `../../mod-hearthside-life/src/<header>`;
+  `CityLifeTypes.h` `#error`s without that module. Change them there and build City and PvP.
+- Upstream commits touching `LifeBotReservation.h` or another `Life*.h` are ported to Life, not here.
+- `src/LifeBotReservation.h` is a one-line forwarding header kept only because upstream
+  `mod-playerbots-artisans` includes it by this path. Never put code in it.
 
 ## Architecture
 
-- **Entry points** (`mod_playerbots_city_life.cpp`): `AddCityLifeScripts()` checks the registry
-  protocol (the active-module flag is set by `LoadConfig` only while the module is enabled and its
-  tables exist), and registers a `WorldScript` (config load → `LoadConfig`, `OnUpdate` → `Update`,
-  shutdown), a `PlayerScript` (logout, trade blocking,
-  achievement suppression for residents in scripted scenes), a `GroupScript` (a resident joining a group
-  with a real player is disengaged at once) and the `.citylife` `CommandScript`. All logic lives
-  in the `CityLife::Manager` singleton (`sCityLifeMgr`).
-- **`CityLifeMgr.cpp`** (~2.6k lines) is the whole lifecycle. `Update()` pumps async DB callbacks
-  and registry arbitration every frame, waits out a startup delay (at least mod-playerbots'
-  `DisabledWithoutRealPlayerLoginDelay`), then every `_tickSeconds` runs `MaintainPopulation()`
-  (budget/time-of-day/demand → per-hub targets → candidate scan → admission requests) and
-  `MaintainResidents()` (per-resident activity state machine, relocation, emotes, lease refresh).
-  Admissions per tick and releases per second are capped by `_maxChangesPerTick`.
-- **Demand (hybrid):** a hub with a real player in it (`PlayerPresent`: mod-playerbots' wake rule
-  over the hub's zone, map or spots, plus `BurstGraceSeconds`) asks for its full population; an
-  empty one keeps a floor (`BaselinePercent`, default 50). While a player is there the hub changes
-  one resident at a time (`PaceAllows`/`PaceUsed`, `CityLife.Population.WatchedPace*`): an arrival
-  walks in from where it stands or from a drop-off out of sight (`AdmitResident` →
-  `LifeArrival::FindDropOff`, `ProcessArrivals` starts the walk), or waits if neither works and
-  the spot is in sight; a departure is marked due (`ReleaseAt`) and leaves like an ended residence
-  (inn bed, then a walk-off). Residents on their way out do not count (`CountStaying`). Unwatched
-  hubs fill and empty at once. The user asked for a floor rather than an empty city that fills
-  when they arrive (2026-10-14). A roaming resident that finishes an
-  activity picks the next by weight (`PickNextActivity`, `CityLife.Weight.*`) and a spot for it
-  (`ChooseSpotForActivity`, class-district matching for trainers); fishers and inn dancers stay
-  at their venue and alternate with sitting; an expired residence ends asleep at an inn
-  (`ReleaseCycle`, `FindInnBedSpot`) before the release.
-- **Admission is two-phase**: `MaintainPopulation` queues an admission request with the shared
-  registry; `ResolveAdmissionRequests` grants a *Provisional* lease; `ProcessAdmissionGrants` takes
-  the grant and `AdmitResident` promotes it to *Active*, snapshots the bot's original position, and
-  applies city strategies (`_nonCombatStrategies`). Release is also staged
-  (`ReleaseResident` → `_releasingResidents` → `ProcessReleasingResidents`) so the bot's
-  strategies/position are restored before the lease is dropped. Every resident action should
-  re-validate its lease (`ValidateActiveLease` / `ValidateResidentAction`); a lost lease means
-  another module or a real player now owns the bot.
-- **The shared Life headers are `../mod-hearthside-life`'s** (moved there 2026-10-14). This module
-  includes them as `../../mod-hearthside-life/src/<header>` and `#error`s without that module
-  (`CityLifeTypes.h`). Change them in the Life repo and build City and PvP. The one exception here is
-  `src/LifeBotReservation.h`: a one-line forwarding header kept only because upstream
-  `mod-playerbots-artisans` includes `../../mod-hearthside-city/src/LifeBotReservation.h`. Never put
-  code in it.
-- **Upstream ports:** upstream `mod-playerbots-city-life` commits that touch `LifeBotReservation.h`
-  or the other `Life*.h` headers land in `../mod-hearthside-life`, not here.
-- **`LifeBotReservation.h`** (Life): process-wide registry (owners, leases with generations,
-  admission arbitration, duel staging slots on a 20yd lattice, real-player challenge cooldowns --
-  the last two used only by `mod-hearthside-pvp` now) shared with `mod-hearthside-pvp`/artisans. Its
-  state is defined once in Life's `LifeRegistry.cpp`. `AddCityLifeScripts()` still calls
-  `CheckProtocolVersion()`, now only a startup sanity check against a module built from an old copy.
-- **`LifeMotion.h`** (Life):
-  `Launch` is one validated move (jump or curve, facing a unit, a held angle or the way it goes)
-  that mod-playerbots is told to wait out; PvP's duel footwork is built on it. `Routine` plays the
-  idle antics (Dance, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
-  arrivals), started at wander, random-emote and duel-spectator spots: `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
-  resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
-- **The other shared Life headers**, used by City and PvP alike:
-  `LifeBots.h` (bot-account filter behind `IsBotSession`/`IsHumanPlayer`/`IsHumanControlled`,
-  archetype filter, budget math, live-bot census, the `StrategyJournal` behind `Resident::Journal`,
-  and `HoldLevels`, the level freeze behind `KeepResidentLevelsFixed`: one registry for both
-  modules, defined in Life's `LifeRegistry.cpp`), `LifePresence.h` (real-player snapshot and the wake rule), `LifeArrival.h`
-  (`FindDropOff`, `InSight`, `WalkOff`: arrivals and departures where a player could see them) and
-  `LifeAudit.h` (the async audit writer; `sCityLifeAudit` writes `Logs/citylife_audit.log`). A
-  change to any of them changes both modules: build both.
-- **`LifeMotion::HopOnTheWay`** also drives `Manager::UpdateTravelHops` (every 250 ms): any random
-  bot on a point move within `CityLife.TravelHops.Radius` of a real player jumps 1-5 times every
-  15-45 s. It is world-wide, not limited to residents, and never touches a player's own alt bot.
-- **`LifeMedic.h`** (Life): Healer bots fixed by
-  GUID as "medics" heal the duelists of a duel that just ended in front of them
-  (`PlayerScript::OnPlayerDuelEnd` → `QueueDuelEnd` → `UpdateDuelMedics`, `CityLife.DuelMedics.*`).
-- **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
-  bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
-  the spectator role (`CitizenRole::Spectator`, `WatchDuels`): residents of hubs whose name contains
-  "gate" or "duel" (`Hub::DuelHub`) or at `DuelRing` spots watch any duel in progress nearby.
-- **`CityLifeActivities.*`** (crowd pairs/AFK, duel spectators, fishing, inn dancing, tavern, NPC
-  and mailbox visits, wall patrol, the inn sleep before release), **`CityLifeMovement.*`** (pathing validation, water/canal avoidance, mounting, sink
-  detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums) and `CityLifePopulation.h`
-  (static data tables).
-- **No bot speech.** City never calls `Say`/`Yell`/`Whisper` for a bot (the `CityLife.Chat.*` keys and
-  `CityLifeDialogues.h` were removed 2026-10-14). Speech is `../mod-hearthside-chat`'s, reached
-  through Life's events. `ApplyCityStrategies` always strips mod-playerbots' `chat` and `emote`
-  strategies. Keep it that way.
-- **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
-  using `../mod-hearthside-chat`'s GUID-fixed personality, asked through Life's `LifeArchetypes`
-  (Chat registers the provider). City never includes Chat's headers. Without a provider (Chat not
-  installed, or `HearthsideChat.Enable`/`HearthsideChat.Life.Enable` off) every bot fits.
-- **Crowd pairs**: a crowd resident lingering near a real player now and then pairs with another
-  (`FindCrowdChatPartner` → `BeginCrowdChat`): they face each other and hold the pair until its
-  45 s deadline. Each pair publishes `LifeEvents::CrowdPair` with the real player as
-  witness; Chat offers the pair a /say script.
-- **Busy marks**: Chat marks the bots it casts in a /say scene (`LifeActivity`). `Manager::Talking`
-  is checked in `MaintainResidents` (no relocation, leash, activity change or antic), the
-  population shrink, a residence's expiry, crowd-partner picking and medics: a busy resident waits.
+- **Entry** (`mod_playerbots_city_life.cpp`): WorldScript (config, update, shutdown), PlayerScript
+  (logout, trade blocking, achievement suppression), GroupScript (a resident joining a real
+  player's group is released at once), `.citylife`. All logic is `CityLife::Manager`
+  (`sCityLifeMgr`, `CityLifeMgr.cpp`).
+- **Tick:** `Update()` pumps async DB and registry arbitration each frame; every `_tickSeconds` it
+  runs `MaintainPopulation()` (demand → hub targets → admission requests) and `MaintainResidents()`
+  (activity state machine). `_maxChangesPerTick` caps admissions and releases.
+- **Demand:** a hub with a real player asks for its full population; an empty one keeps a floor
+  (`BaselinePercent`, the user's choice over an empty city). While watched, a hub changes one
+  resident at a time: arrivals walk in (`LifeArrival::FindDropOff`), departures leave via an inn
+  bed then a walk-off. Unwatched hubs change at once.
+- **Leases:** admission is two-phase (request → Provisional → Active in `AdmitResident`), release is
+  staged (`ReleaseResident` → `ProcessReleasingResidents`) so strategies and position are restored
+  before the lease drops. Every resident action re-validates its lease; a lost lease means another
+  module or a player owns the bot.
+- **Files:** `CityLifeActivities.*` (activities), `CityLifeMovement.*` (pathing, water avoidance,
+  mounting), `CityLifeTypes.h` (structs, enums), `CityLifePopulation.h` (static tables).
+- **Duels belong to PvP.** City keeps only spectators (`WatchDuels` at gate/duel hubs and
+  `DuelRing` spots) and medics (`LifeMedic`).
+- **Chat integration:** `CityLife.Bots.Archetypes` filters through Life's `LifeArchetypes` (every
+  bot fits without a provider). Crowd pairs publish `LifeEvents::CrowdPair`, which Chat turns into a
+  /say script. A bot Chat marks busy (`Manager::Talking`) is not moved, re-tasked, released or
+  picked until the scene ends.
 
 ## Data and SQL
 
-- Hubs and spots live in the WORLD tables `city_life_hub` / `city_life_spot`, loaded by
-  `LoadData()`. Config values override `default_population` at runtime. GM `.citylife hub|spot`
-  edits go through `QueueMutation()` (async transaction, max 32 queued) and trigger a reload.
-- `data/sql/db-world/base/city_life.sql` is the single schema + seed file, applied by AzerothCore's
-  updater (only `db-world`-style directories are scanned). It is written to be **re-applied**: the
-  updater stores each file's SHA1 and re-runs it whenever it changes (comment edits included), so it
-  must stay idempotent: `CREATE TABLE IF NOT EXISTS`, the `AddColumnUnlessExists_CityLife`
-  procedure for new columns, `INSERT IGNORE` for seeds so operator-edited rows survive. Upstream's
-  `manual/` + `updates/` scripts were folded into it; add new columns/seeds there the same way
-  rather than adding an `updates/` file.
-- `data/sql/manual/2026_10_10_02_city_life_guard_ambience.sql` is optional guard SmartAI flavor,
-  applied by hand only (`manual/` is not scanned).
-- `VerifyDatabase()` only checks that both tables exist; its error text points at the updater and
-  `Updates.EnableDatabases`. `.citylife spot delete` disables a row instead of deleting it, so a
-  re-applied seed does not resurrect it.
+- Hubs and spots: WORLD tables `city_life_hub`/`city_life_spot`. GM edits go through
+  `QueueMutation()`; `.citylife spot delete` disables a row rather than deleting it.
+- `data/sql/db-world/base/city_life.sql` is the single schema and seed file and is re-applied
+  whenever its hash changes, so keep it idempotent (`CREATE TABLE IF NOT EXISTS`,
+  `AddColumnUnlessExists_CityLife`, `INSERT IGNORE`). Add to it; don't add `updates/` files.
+- `data/sql/manual/` is applied by hand only.
 
 ## Conventions
 
-- Logging uses the `module` logger with a `[CityLife]` prefix; the startup line uses `server.loading`.
-- Every new config key goes in `conf/mod_playerbots_city_life.conf.dist` with a comment, and is read
-  in `Manager::LoadConfig()` (re-run on `.reload config` via `OnAfterConfigLoad`). Keys that mean the
-  same thing in PvP share their name after the prefix (`Bots.*`, `Population.BudgetMode`,
-  `Antics.*`, `DuelMedics.*`, `Audit.*`); keep it that way.
-- Keep the README's invariants: borrow bots as-is (no level/talent/stat changes), never touch real
-  players or player-owned bots, no bot speech, economic interactions default off.
+- Logging: the `module` logger with a `[CityLife]` prefix (startup line on `server.loading`).
+- A new config key gets a commented entry in `conf/mod_playerbots_city_life.conf.dist` and a read
+  in `Manager::LoadConfig()`. Keys shared in meaning with PvP keep the same name after the prefix
+  (`Bots.*`, `Population.BudgetMode`, `Antics.*`, `DuelMedics.*`, `Audit.*`).
+- Invariants: borrow bots as-is (no level, talent or stat changes); never touch real players or
+  their bots; **no bot speech** (`ApplyCityStrategies` strips `chat` and `emote`; speech is Chat's);
+  economic interactions default off.
