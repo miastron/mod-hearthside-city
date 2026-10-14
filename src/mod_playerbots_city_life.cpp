@@ -59,7 +59,8 @@ public:
             PLAYERHOOK_CAN_INIT_TRADE,
             PLAYERHOOK_CAN_SET_TRADE_ITEM,
             PLAYERHOOK_ON_BEFORE_ACHI_COMPLETE,
-            PLAYERHOOK_ON_BEFORE_CRITERIA_PROGRESS
+            PLAYERHOOK_ON_BEFORE_CRITERIA_PROGRESS,
+            PLAYERHOOK_ON_DUEL_END
         })
     {
     }
@@ -77,6 +78,12 @@ public:
     void OnPlayerUpdateZone(Player* player, uint32 newZone, uint32 /*newArea*/) override
     {
         sCityLifeMgr.OnPlayerZoneUpdate(player, newZone);
+    }
+
+    void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type) override
+    {
+        if (type == DUEL_WON)
+            sCityLifeMgr.QueueDuelEnd(winner, loser);
     }
 
     bool OnPlayerCanInitTrade(Player* player, Player* target) override

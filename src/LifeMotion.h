@@ -68,6 +68,11 @@ namespace LifeMotion
         // Also point mod-playerbots' "stay" position at the landing spot, so its "return to stay
         // position" does not walk an idle bot straight back between steps.
         bool MoveStay = false;
+        // Tell mod-playerbots to wait the move out (its "last movement"). Off for a hop in the middle
+        // of the bot's own run: its path resumes by itself afterwards, and its plan should stand.
+        bool TellPlayerbots = true;
+        // A jump longer than this runs instead.
+        float JumpLimit = MaxJumpDistance;
     };
 
     struct Landing
@@ -100,7 +105,7 @@ namespace LifeMotion
             return false;
 
         int32 durationMs = 0;
-        bool jumped = move.Jump && step <= MaxJumpDistance;
+        bool jumped = move.Jump && step <= move.JumpLimit;
         if (jumped)
         {
             float speedXY = std::max(step / JumpAirSeconds, 2.0f);
@@ -174,7 +179,7 @@ namespace LifeMotion
         }
 
         // Ask mod-playerbots' own movement to wait the move out rather than redirect it halfway.
-        if (PlayerbotAI* ai = GET_PLAYERBOT_AI(bot))
+        if (PlayerbotAI* ai = move.TellPlayerbots ? GET_PLAYERBOT_AI(bot) : nullptr)
         {
             ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().Set(
                 bot->GetMapId(), x, y, z, bot->GetOrientation(), float(std::max(durationMs, 300)),
@@ -198,13 +203,48 @@ namespace LifeMotion
         return true;
     }
 
+    // ---------------------------------------------------------------- hops on the way
+
+    // A bot running somewhere on its own (a point move: mod-playerbots' travel, a resident walking to
+    // its spot) on the ground, out of combat, with at least a jump's length still to go. Moves the
+    // Life modules launch themselves are not point moves, so footwork, antics and strolls never qualify.
+    inline bool CanHopOnTheWay(Player* bot)
+    {
+        if (!bot || !bot->IsInWorld() || !bot->IsAlive() || !bot->isMoving() || bot->IsInCombat() || bot->duel ||
+            bot->IsInFlight() || bot->IsFlying() || bot->IsInWater() || bot->IsWalking() || bot->IsFalling() ||
+            bot->IsNonMeleeSpellCast(false) || bot->GetVehicle() ||
+            bot->HasUnitState(UNIT_STATE_ROOT | UNIT_STATE_STUNNED | UNIT_STATE_CONFUSED | UNIT_STATE_FLEEING) ||
+            bot->GetMotionMaster()->GetCurrentMovementGeneratorType() != POINT_MOTION_TYPE ||
+            bot->movespline->Finalized())
+            return false;
+        G3D::Vector3 end = bot->movespline->FinalDestination();
+        float speed = bot->GetSpeed(MOVE_RUN);
+        return bot->GetExactDist2d(end.x, end.y) > speed * JumpAirSeconds + 4.0f;
+    }
+
+    // A jump straight on along the run, as far as the bot's own speed carries it in the air, so the
+    // run does not stutter. The point move picks up again from where it lands.
+    inline bool HopOnTheWay(Player* bot, Landing* out = nullptr)
+    {
+        if (!CanHopOnTheWay(bot))
+            return false;
+        Move move;
+        move.From = bot->GetPosition();
+        move.Angle = bot->GetOrientation();
+        // A galloping mount covers ~12 yards in the air; any more is a flying mount's speed on the ground.
+        move.Distance = std::min(bot->GetSpeed(MOVE_RUN) * JumpAirSeconds, 12.0f);
+        move.JumpLimit = 12.0f;
+        move.Jump = true;
+        move.TellPlayerbots = false;
+        return Launch(bot, move, Bound(), out);
+    }
+
     // ---------------------------------------------------------------- idle antics
 
     enum class Antic : uint8
     {
         None = 0,
         Dance,         // the /dance state, held
-        Strafe,        // quick side-to-side steps, facing fixed
         HopBackForth,  // hop forward and back: backpedalling, or turning round between hops
         HopSideToSide, // strafe hops, facing fixed
         BunnyHop,      // hop after hop round a circle, a figure 8 or a zigzag
@@ -212,7 +252,7 @@ namespace LifeMotion
     };
 
     // The timed antics, in config order.
-    constexpr uint8 TimedAnticCount = 5;
+    constexpr uint8 TimedAnticCount = 4;
     inline Antic TimedAntic(uint8 index) { return Antic(uint8(Antic::Dance) + index); }
 
     inline char const* AnticName(Antic antic)
@@ -220,7 +260,6 @@ namespace LifeMotion
         switch (antic)
         {
             case Antic::Dance: return "Dance";
-            case Antic::Strafe: return "Strafe";
             case Antic::HopBackForth: return "HopBackForth";
             case Antic::HopSideToSide: return "HopSideToSide";
             case Antic::BunnyHop: return "BunnyHop";
@@ -250,9 +289,9 @@ namespace LifeMotion
         uint32 CooldownSeconds = 120; // per bot, between the end of one and the start of the next
         uint32 HopDismountChance = 35;
         float Radius = 8.0f;          // how far a hopping antic strays from where it started
-        uint32 Weight[TimedAnticCount] = { 20, 20, 20, 20, 20 };
-        uint32 MinSeconds[TimedAnticCount] = { 30, 5, 5, 5, 15 };
-        uint32 MaxSeconds[TimedAnticCount] = { 60, 10, 10, 10, 30 };
+        uint32 Weight[TimedAnticCount] = { 20, 20, 20, 20 };
+        uint32 MinSeconds[TimedAnticCount] = { 30, 5, 5, 15 };
+        uint32 MaxSeconds[TimedAnticCount] = { 60, 10, 10, 30 };
     };
 
     // Reads <prefix>.Enable, .ChancePerMinute, .CooldownSeconds, .HopDismount.Chance, .Radius and,
@@ -537,19 +576,6 @@ namespace LifeMotion
                 }
                 r.NextMs = now + 1000;
                 return true;
-            case Antic::Strafe:
-            {
-                // Step across to the other side of the anchor, never turning.
-                r.Side = int8(-r.Side);
-                float across = r.Facing + float(r.Side) * float(M_PI) / 2.0f;
-                float reach = frand(1.0f, 2.2f);
-                float tx = r.AnchorX + std::cos(across) * reach;
-                float ty = r.AnchorY + std::sin(across) * reach;
-                float angle = std::atan2(ty - bot->GetPositionY(), tx - bot->GetPositionX());
-                moved = Detail::Step(bot, r, bound, angle, bot->GetExactDist2d(tx, ty), false, true, landing);
-                pauseMs = urand(0, 250);
-                break;
-            }
             case Antic::HopBackForth:
             {
                 bool forward = r.Step % 2 == 0;

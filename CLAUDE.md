@@ -86,9 +86,15 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   this repo (`../../mod-hearthside-city/src/LifeMotion.h`), so a change here changes both modules.
   `Launch` is one validated move (jump or curve, facing a unit, a held angle or the way it goes)
   that mod-playerbots is told to wait out; PvP's duel footwork is built on it. `Routine` plays the
-  idle antics (Dance, Strafe, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
+  idle antics (Dance, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
   arrivals), started at wander, random-emote and duel-spectator spots: `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
   resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
+- **`LifeMotion::HopOnTheWay`** also drives `Manager::UpdateTravelHops` (every 250 ms): any random
+  bot on a point move within `CityLife.TravelHops.Radius` of a real player jumps 1-5 times every
+  15-45 s. It is world-wide, not limited to residents, and never touches a player's own alt bot.
+- **`LifeMedic.h`**: header-only, owned here and included by PvP the same way. Healer bots fixed by
+  GUID as "medics" heal the duelists of a duel that just ended in front of them
+  (`PlayerScript::OnPlayerDuelEnd` → `QueueDuelEnd` → `UpdateDuelMedics`, `CityLife.DuelMedics.*`).
 - **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
   bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
   the spectator role (`CitizenRole::Spectator`, `WatchDuels`): residents of hubs whose name contains

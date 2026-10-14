@@ -203,9 +203,8 @@ CityLife.Activities.AFK.Enable = 1
 ###################################################################################################
 
 # A resident standing about at a wander, emote or duel-spectator spot now and then plays out an antic
-# instead of a plain emote or cheer: Dance (/dance), Strafe (quick side-to-side steps, facing fixed), HopBackForth (hops
-# forward and back, either backpedalling or turning round between hops), HopSideToSide (strafe hops)
-# or BunnyHop (hop after hop round a circle, a figure 8 or a zigzag). It stops at once for combat, a
+# instead of a plain emote or cheer: Dance (/dance), HopBackForth (hops forward and back, either
+# backpedalling or turning round between hops), HopSideToSide (strafe hops) or BunnyHop (hop after hop round a circle, a figure 8 or a zigzag). It stops at once for combat, a
 # duel, a real player taking the bot over, or mod-playerbots pausing it, and walks back to its spot.
 # Test one with .citylife debug antic <name> <antic>.
 CityLife.Antics.Enable = 1
@@ -227,9 +226,6 @@ CityLife.Antics.HopDismount.Chance = 35
 CityLife.Antics.Dance.Weight = 20
 CityLife.Antics.Dance.MinSeconds = 30
 CityLife.Antics.Dance.MaxSeconds = 60
-CityLife.Antics.Strafe.Weight = 20
-CityLife.Antics.Strafe.MinSeconds = 5
-CityLife.Antics.Strafe.MaxSeconds = 10
 CityLife.Antics.HopBackForth.Weight = 20
 CityLife.Antics.HopBackForth.MinSeconds = 5
 CityLife.Antics.HopBackForth.MaxSeconds = 10
@@ -239,6 +235,36 @@ CityLife.Antics.HopSideToSide.MaxSeconds = 10
 CityLife.Antics.BunnyHop.Weight = 20
 CityLife.Antics.BunnyHop.MinSeconds = 15
 CityLife.Antics.BunnyHop.MaxSeconds = 30
+
+###################################################################################################
+# Duel Medics (src/LifeMedic.h, shared with mod-hearthside-pvp)
+###################################################################################################
+
+# A healer resident (Holy/Discipline priest, Holy paladin, Restoration shaman or druid) standing at its
+# spot now and then heals the duelists of a duel that just ended in front of it, real players' duels
+# included. Only MedicPercent of healers ever do it (fixed per bot, so it is the same few), only within
+# Radius yards with the duel in front of them, and only on Chance of the duels. MaxPerDuel medics at
+# most per duel: the first heals the loser, a second the winner. PvP Life's healer duelists do the same
+# (PvPLife.DuelMedics.*).
+CityLife.DuelMedics.Enable = 1
+CityLife.DuelMedics.MedicPercent = 30
+CityLife.DuelMedics.Chance = 50
+CityLife.DuelMedics.MaxPerDuel = 1
+CityLife.DuelMedics.Radius = 30
+
+###################################################################################################
+# Hops on the Way (src/LifeMotion.h)
+###################################################################################################
+
+# Any random bot running somewhere (travelling, questing, a resident walking to its spot) within Radius
+# yards of a real player now and then jumps a few times on the way: every IntervalMinSeconds to
+# IntervalMaxSeconds, a burst of 1 to MaxJumps jumps straight on along its run. Not in combat, in
+# water, walking or flying, and never a player's own alt bot. Bots nobody is near never jump.
+CityLife.TravelHops.Enable = 1
+CityLife.TravelHops.Radius = 80
+CityLife.TravelHops.IntervalMinSeconds = 15
+CityLife.TravelHops.IntervalMaxSeconds = 45
+CityLife.TravelHops.MaxJumps = 5
 
 ###################################################################################################
 # Living Crowd Scenes (Capital Bank & Auction House Squares)

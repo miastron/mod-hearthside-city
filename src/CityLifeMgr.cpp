@@ -341,6 +341,12 @@ namespace CityLife
         _actTavernDrinking = sConfigMgr->GetOption<bool>("CityLife.Activities.TavernDrinking.Enable", true);
         _actRandomEmotes = sConfigMgr->GetOption<bool>("CityLife.Activities.RandomEmotes.Enable", true);
         _antics = LifeMotion::LoadAnticConfig("CityLife.Antics");
+        _medics = LifeMedic::LoadConfig("CityLife.DuelMedics");
+        _travelHops = sConfigMgr->GetOption<bool>("CityLife.TravelHops.Enable", true);
+        _travelHopRadius = std::clamp(sConfigMgr->GetOption<float>("CityLife.TravelHops.Radius", 80.0f), 10.0f, 200.0f);
+        _travelHopMinSeconds = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.TravelHops.IntervalMinSeconds", 15), 1, 3600);
+        _travelHopMaxSeconds = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.TravelHops.IntervalMaxSeconds", 45), _travelHopMinSeconds, 3600);
+        _travelHopMaxJumps = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("CityLife.TravelHops.MaxJumps", 5), 1, 10);
         _actAuctionHouse = sConfigMgr->GetOption<bool>("CityLife.Activities.AuctionHouse.Enable", true);
         _actMailbox = sConfigMgr->GetOption<bool>("CityLife.Activities.Mailbox.Enable", true);
         _actTrainer = sConfigMgr->GetOption<bool>("CityLife.Activities.Trainer.Enable", true);
@@ -2615,6 +2621,118 @@ namespace CityLife
         return true;
     }
 
+    void Manager::QueueDuelEnd(Player* winner, Player* loser)
+    {
+        if (!_medics.Enable || !winner || !loser)
+            return;
+        std::lock_guard<std::mutex> lock(_duelEndMutex);
+        if (_duelEnds.size() < 64)
+            _duelEnds.push_back(LifeMedic::MakeDuelEnd(winner, loser));
+    }
+
+    void Manager::UpdateDuelMedics()
+    {
+        std::vector<LifeMedic::DuelEnd> ends;
+        {
+            std::lock_guard<std::mutex> lock(_duelEndMutex);
+            ends.swap(_duelEnds);
+        }
+        uint32 nowMs = GameTimeMS();
+        for (LifeMedic::DuelEnd const& end : ends)
+        {
+            // Residents standing about at their spot (spectators above all), not mid-antic or chatting.
+            std::vector<Player*> candidates;
+            for (Resident const& resident : _residents)
+            {
+                if (!resident.AtSpot || resident.Sitting || resident.ChatPartnerGuid || LifeMotion::Running(resident.Antic))
+                    continue;
+                Player* player = FindPlayer(resident.Bot.GuidLow);
+                if (!player || player->GetMapId() != end.MapId || !ValidateResidentAction(player, resident))
+                    continue;
+                PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
+                if (ai && ai->AllowActivity())
+                    candidates.push_back(player);
+            }
+            for (LifeMedic::PendingHeal const& heal : LifeMedic::Plan(candidates, end, _medics, nowMs))
+                _pendingHeals.push_back(heal);
+        }
+
+        for (auto it = _pendingHeals.begin(); it != _pendingHeals.end();)
+        {
+            if (!LifeMotion::Reached(nowMs, it->DueMs))
+            {
+                ++it;
+                continue;
+            }
+            Player* healer = FindPlayer(it->HealerGuid);
+            Resident const* resident = FindResident(it->HealerGuid);
+            if (healer && resident && ValidateResidentAction(healer, *resident) &&
+                LifeMedic::Heal(healer, FindPlayer(it->TargetGuid)) && _debug)
+                LOG_INFO("module", "[CityLife] {} heals after a duel.", healer->GetName());
+            it = _pendingHeals.erase(it);
+        }
+    }
+
+    void Manager::UpdateTravelHops()
+    {
+        if (!_travelHops)
+            return;
+        uint32 nowMs = GameTimeMS();
+        if (LifeMotion::Reached(nowMs, _humanGuidsRefreshMs))
+        {
+            _humanGuidsRefreshMs = nowMs + 5000;
+            _humanGuids.clear();
+            {
+                std::shared_lock<std::shared_mutex> playerLock(*HashMapHolder<Player>::GetLock());
+                for (auto const& [guid, player] : ObjectAccessor::GetPlayers())
+                    if (player && player->IsInWorld() && IsHumanPlayer(player))
+                        _humanGuids.push_back(player->GetGUID().GetCounter());
+            }
+            // Forget bots not near anyone for a minute.
+            for (auto it = _travelHopStates.begin(); it != _travelHopStates.end();)
+                it = static_cast<int32>(nowMs - it->second.SeenMs) > 60000 ? _travelHopStates.erase(it) : std::next(it);
+        }
+
+        std::unordered_set<uint32> visited;
+        for (uint32 humanGuid : _humanGuids)
+        {
+            Player* human = FindPlayer(humanGuid);
+            if (!human || !human->IsInWorld())
+                continue;
+            for (auto const& ref : human->GetMap()->GetPlayers())
+            {
+                Player* bot = ref.GetSource();
+                if (!bot || bot == human || !bot->isMoving() || !human->IsWithinDistInMap(bot, _travelHopRadius))
+                    continue;
+                uint32 guid = bot->GetGUID().GetCounter();
+                // Random bots only: never a real player, nor a player's own alt bot.
+                if (!visited.insert(guid).second || !IsBotSession(bot) || IsHumanControlled(bot))
+                    continue;
+
+                TravelHopState& state = _travelHopStates[guid];
+                state.SeenMs = nowMs;
+                if (!state.NextMs)
+                {
+                    // First seen: start its clock at a random point, so bots do not hop in step.
+                    state.NextMs = nowMs + urand(0, _travelHopMaxSeconds * 1000);
+                    continue;
+                }
+                if (!LifeMotion::Reached(nowMs, state.NextMs))
+                    continue;
+                if (!state.Left)
+                    state.Left = uint8(urand(1, _travelHopMaxJumps));
+                LifeMotion::Landing landing;
+                if (!LifeMotion::HopOnTheWay(bot, &landing))
+                    continue; // not running somewhere just now: the burst waits for the next run
+                ++_travelHopsDone;
+                if (--state.Left)
+                    state.NextMs = nowMs + uint32(std::max(landing.DurationMs, 0)) + urand(100, 900);
+                else
+                    state.NextMs = nowMs + urand(_travelHopMinSeconds, _travelHopMaxSeconds) * 1000;
+            }
+        }
+    }
+
     void Manager::UpdateAntics()
     {
         if (!_antics.Enable)
@@ -2835,6 +2953,13 @@ namespace CityLife
         {
             _anticTimerMs = 0;
             UpdateAntics();
+            UpdateDuelMedics();
+        }
+        _travelHopTimerMs += diff;
+        if (_travelHopTimerMs >= 250)
+        {
+            _travelHopTimerMs = 0;
+            UpdateTravelHops();
         }
         ProcessAdmissionGrants(); // Acknowledge five-second grants independently of management ticks.
     }
@@ -2866,6 +2991,11 @@ namespace CityLife
             [](Resident const& resident) { return LifeMotion::Running(resident.Antic); }));
         handler->PSendSysMessage("Antics: enabled={} running={} chance={}%/min cooldown={}s hopDismount={}%",
             _antics.Enable ? 1 : 0, anticsRunning, _antics.ChancePerMinute, _antics.CooldownSeconds, _antics.HopDismountChance);
+        handler->PSendSysMessage("Duel medics: enabled={} medics={}% of healers chance={}% max={} radius={} pending={}",
+            _medics.Enable ? 1 : 0, _medics.MedicPercent, _medics.Chance, _medics.MaxPerDuel, _medics.Radius, _pendingHeals.size());
+        handler->PSendSysMessage("Travel hops: enabled={} radius={} every {}-{}s up to {} jumps; tracked={} hops so far={}",
+            _travelHops ? 1 : 0, _travelHopRadius, _travelHopMinSeconds, _travelHopMaxSeconds, _travelHopMaxJumps,
+            _travelHopStates.size(), _travelHopsDone);
         auto snapshot = PlayerbotsLife::GetCooperationSnapshot();
         handler->PSendSysMessage("Admissions pending={} shared waiting={} unacknowledged={} ownership={} work used={}/{}",
             _pendingAdmissions.size(), snapshot.WaitingAdmissions, snapshot.UnacknowledgedGrants,
@@ -2912,7 +3042,7 @@ namespace CityLife
         handler->PSendSysMessage(".citylife compat");
         handler->PSendSysMessage(".citylife reload [config|data|all]");
         handler->PSendSysMessage(".citylife debug status");
-        handler->PSendSysMessage(".citylife debug antic <name> <Dance|Strafe|HopBackForth|HopSideToSide|BunnyHop>");
+        handler->PSendSysMessage(".citylife debug antic <name> <Dance|HopBackForth|HopSideToSide|BunnyHop>");
         handler->PSendSysMessage(".citylife hub list");
         handler->PSendSysMessage(".citylife hub add <name> <alliance|horde|any> <minLevel> <maxLevel> <population> [priority]");
         handler->PSendSysMessage(".citylife hub population <name> <count>");
@@ -2973,7 +3103,7 @@ namespace CityLife
             if (!resident || !ValidateResidentAction(player, *resident))
                 handler->PSendSysMessage("'{}' is not a City Life resident right now.", args[2]);
             else if (kind == LifeMotion::Antic::None || kind == LifeMotion::Antic::HopDismount)
-                handler->PSendSysMessage("Antics: Dance, Strafe, HopBackForth, HopSideToSide, BunnyHop.");
+                handler->PSendSysMessage("Antics: Dance, HopBackForth, HopSideToSide, BunnyHop.");
             else if (player->IsInCombat() || player->duel || !TryStartAntic(*resident, player, GameTimeMS(), kind))
                 handler->PSendSysMessage("{} is busy.", player->GetName());
             else

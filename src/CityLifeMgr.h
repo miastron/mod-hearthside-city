@@ -8,6 +8,7 @@
 #define CITY_LIFE_MGR_H
 
 #include "CityLifeTypes.h"
+#include "LifeMedic.h"
 #include "AsyncCallbackProcessor.h"
 #include "QueryCallback.h"
 #include "Transaction.h"
@@ -55,6 +56,9 @@ namespace CityLife
         // or accepts an invite from inside Player::Update), concurrently with other hooks that read
         // the resident list. They queue the GUID here; Update() disengages it on the world thread.
         void QueueDisengage(uint32 guidLow);
+        // PlayerScript::OnPlayerDuelEnd, any duel won anywhere (map-update threads): queued for the
+        // duel medics, handled on the world thread.
+        void QueueDuelEnd(Player* winner, Player* loser);
         bool IsResident(uint32 guidLow) const;
 
         // Activity Helper Methods
@@ -134,6 +138,12 @@ namespace CityLife
         void RelocateResident(Resident& resident, Hub const& hub);
         // Advances running antics and starts mid-air dismounts; every ~100 ms from Update.
         void UpdateAntics();
+        // Healer residents who now and then heal the duelists of a duel that just finished in front
+        // of them (LifeMedic.h, CityLife.DuelMedics.*). Every ~100 ms from Update.
+        void UpdateDuelMedics();
+        // Any random bot running somewhere within CityLife.TravelHops.Radius of a real player now and
+        // then jumps a few times on the way (LifeMotion::HopOnTheWay). Every ~250 ms from Update.
+        void UpdateTravelHops();
         // Starts `kind` on an idle resident; with None, rolls CityLife.Antics.ChancePerMinute and picks one.
         bool TryStartAntic(Resident& resident, Player* player, uint32 nowMs, LifeMotion::Antic kind = LifeMotion::Antic::None);
         void SnapTargetToGround(Player* player, Resident& resident, Hub const& hub, Spot const& spot) const;
@@ -236,6 +246,30 @@ namespace CityLife
         // Idle antics
         LifeMotion::AnticConfig _antics;
         uint32 _anticTimerMs = 0;
+
+        // Duel medics
+        LifeMedic::Config _medics;
+        std::mutex _duelEndMutex;
+        std::vector<LifeMedic::DuelEnd> _duelEnds;
+        std::vector<LifeMedic::PendingHeal> _pendingHeals;
+
+        // Hops on the way
+        bool _travelHops = true;
+        float _travelHopRadius = 80.0f;
+        uint32 _travelHopMinSeconds = 15;
+        uint32 _travelHopMaxSeconds = 45;
+        uint32 _travelHopMaxJumps = 5;
+        uint32 _travelHopTimerMs = 0;
+        uint32 _travelHopsDone = 0;
+        struct TravelHopState
+        {
+            uint32 NextMs = 0;
+            uint32 SeenMs = 0;
+            uint8 Left = 0; // jumps left in the burst under way
+        };
+        std::unordered_map<uint32, TravelHopState> _travelHopStates;
+        std::vector<uint32> _humanGuids; // real players online, refreshed every few seconds
+        uint32 _humanGuidsRefreshMs = 0;
 
         // Movement & Sink Settings
         uint32 _mountBetweenPoiChance = 90;
