@@ -63,6 +63,8 @@ namespace LifeMotion
         Unit* Face = nullptr;
         bool HoldFacing = false;
         float FacingAngle = 0.0f;
+        // A run at walking pace (an idle stroll), not running speed. Jumps ignore it.
+        bool Walk = false;
         // Also point mod-playerbots' "stay" position at the landing spot, so its "return to stay
         // position" does not walk an idle bot straight back between steps.
         bool MoveStay = false;
@@ -155,6 +157,8 @@ namespace LifeMotion
             bot->GetMotionMaster()->MoveIdle();
             ::Movement::MoveSplineInit init(bot);
             init.MovebyPath(path);
+            if (move.Walk)
+                init.SetWalk(true);
             if (move.Face || move.HoldFacing)
             {
                 float faceAngle = move.Face ? bot->GetAngle(move.Face) : move.FacingAngle;
