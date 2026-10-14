@@ -2648,9 +2648,13 @@ namespace CityLife
                     continue;
             }
 
-            // A resident mod-playerbots pauses (BotActiveAlone) starts no new antic, but one under way
-            // plays out: pauses come and go in 30-second slices and would cut nearly every antic short.
             bool going = player && ValidateResidentAction(player, resident);
+            if (going && resident.Antic.Kind != LifeMotion::Antic::HopDismount)
+            {
+                // A resident mod-playerbots has paused stops, as it starts nothing new either.
+                PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
+                going = ai && ai->AllowActivity();
+            }
             if (going)
             {
                 // Within the leash, so the maintenance pass never pulls it back mid-antic.
