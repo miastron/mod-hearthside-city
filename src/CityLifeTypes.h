@@ -10,6 +10,7 @@
 #include "Define.h"
 #include "LifeBotReservation.h"
 #include "LifeMotion.h"
+#include "LifeBots.h"
 
 #include <string>
 #include <vector>
@@ -86,12 +87,6 @@ namespace CityLife
         WanderBack = 3
     };
 
-    enum class BudgetMode : uint8
-    {
-        Count = 0,
-        Percentage = 1
-    };
-
     enum class DemandMode : uint8
     {
         Fixed = 0,
@@ -153,24 +148,6 @@ namespace CityLife
         TeamSide Team = TeamSide::Any;
     };
 
-    struct ResidentMutationJournal
-    {
-        bool CapturedOriginalStrategies = false;
-        std::vector<std::string> OriginalNonCombatStrategies;
-        std::vector<std::string> AppliedStrategies;
-        std::vector<std::string> RemovedStrategies;
-        bool ModifiedStayPosition = false;
-        bool HadStayPosition = false;
-        float PrevStayX = 0.0f;
-        float PrevStayY = 0.0f;
-        float PrevStayZ = 0.0f;
-        uint32 PrevStayMap = 0;
-        float AppliedStayX = 0.0f;
-        float AppliedStayY = 0.0f;
-        float AppliedStayZ = 0.0f;
-        uint32 AppliedStayMap = 0;
-    };
-
     struct Resident
     {
         BotCandidate Bot;
@@ -225,9 +202,13 @@ namespace CityLife
         LifeMotion::Routine Antic;
         bool HopDismountRolled = false;
 
-        // Tokenized Cooperation Lease & State Mutation Journal
+        // Dropped off out of sight on arrival: walks in to its spot once the teleport has landed
+        // (game ms; 0 = no walk pending).
+        uint32 ArrivalWalkAtMs = 0;
+
+        // Tokenized Cooperation Lease & State Mutation Journal (LifeBots.h)
         PlayerbotsLife::LeaseToken Token;
-        ResidentMutationJournal Journal;
+        LifeBots::StrategyJournal Journal;
     };
 }
 

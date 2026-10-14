@@ -54,7 +54,7 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
 - **Entry points** (`mod_playerbots_city_life.cpp`): `AddCityLifeScripts()` checks the registry
   protocol (the active-module flag is set by `LoadConfig` only while the module is enabled and its
   tables exist), and registers a `WorldScript` (config load → `LoadConfig`, `OnUpdate` → `Update`,
-  shutdown), a `PlayerScript` (login/logout/zone tracking of real players, trade blocking,
+  shutdown), a `PlayerScript` (logout, trade blocking,
   achievement suppression for residents in scripted scenes), a `GroupScript` (a resident joining a group
   with a real player is disengaged at once) and the `.citylife` `CommandScript`. All logic lives
   in the `CityLife::Manager` singleton (`sCityLifeMgr`).
@@ -63,7 +63,17 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   `DisabledWithoutRealPlayerLoginDelay`), then every `_tickSeconds` runs `MaintainPopulation()`
   (budget/time-of-day/demand → per-hub targets → candidate scan → admission requests) and
   `MaintainResidents()` (per-resident activity state machine, relocation, emotes, lease refresh).
-  Changes per tick are capped by `_maxChangesPerTick`. A roaming resident that finishes an
+  Admissions per tick and releases per second are capped by `_maxChangesPerTick`.
+- **Demand (hybrid):** a hub with a real player in it (`PlayerPresent`: mod-playerbots' wake rule
+  over the hub's zone, map or spots, plus `BurstGraceSeconds`) asks for its full population; an
+  empty one keeps a floor (`BaselinePercent`, default 50). While a player is there the hub changes
+  one resident at a time (`PaceAllows`/`PaceUsed`, `CityLife.Population.WatchedPace*`): an arrival
+  walks in from where it stands or from a drop-off out of sight (`AdmitResident` →
+  `LifeArrival::FindDropOff`, `ProcessArrivals` starts the walk), or waits if neither works and
+  the spot is in sight; a departure is marked due (`ReleaseAt`) and leaves like an ended residence
+  (inn bed, then a walk-off). Residents on their way out do not count (`CountStaying`). Unwatched
+  hubs fill and empty at once. The user asked for a floor rather than an empty city that fills
+  when they arrive (2026-10-14). A roaming resident that finishes an
   activity picks the next by weight (`PickNextActivity`, `CityLife.Weight.*`) and a spot for it
   (`ChooseSpotForActivity`, class-district matching for trainers); fishers and inn dancers stay
   at their venue and alternate with sitting; an expired residence ends asleep at an inn
@@ -89,6 +99,14 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   idle antics (Dance, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
   arrivals), started at wander, random-emote and duel-spectator spots: `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
   resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
+- **Shared Life headers** (owned here, included by PvP from this repo, like `LifeMotion.h`):
+  `LifeBots.h` (bot-account filter behind `IsBotSession`/`IsHumanPlayer`/`IsHumanControlled`,
+  archetype filter, budget math, live-bot census, the `StrategyJournal` behind `Resident::Journal`,
+  and `HoldLevels`, the level freeze behind `KeepResidentLevelsFixed`: one registry for both
+  modules), `LifePresence.h` (real-player snapshot and the wake rule), `LifeArrival.h`
+  (`FindDropOff`, `InSight`, `WalkOff`: arrivals and departures where a player could see them) and
+  `LifeAudit.h` (the async audit writer; `sCityLifeAudit` writes `Logs/citylife_audit.log`). A
+  change here changes both modules: build both.
 - **`LifeMotion::HopOnTheWay`** also drives `Manager::UpdateTravelHops` (every 250 ms): any random
   bot on a point move within `CityLife.TravelHops.Radius` of a real player jumps 1-5 times every
   15-45 s. It is world-wide, not limited to residents, and never touches a player's own alt bot.
@@ -104,7 +122,7 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums), `CityLifeDialogues.h`
   and `CityLifePopulation.h` (static data tables).
 - **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
-  using `../mod-hearthside-chat`'s GUID-fixed personality. `CityLifeMgr.cpp` picks it up with
+  using `../mod-hearthside-chat`'s GUID-fixed personality. `LifeBots.h` picks it up with
   `__has_include("hs_archetype.h")` and calls `Hs_ArchetypeForBot` / `Hs_ArchetypeMaskForNames`;
   without that module every bot fits. Changing those signatures in the chat module breaks this build.
 
@@ -130,6 +148,8 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
 
 - Logging uses the `module` logger with a `[CityLife]` prefix; the startup line uses `server.loading`.
 - Every new config key goes in `conf/mod_playerbots_city_life.conf.dist` with a comment, and is read
-  in `Manager::LoadConfig()` (re-run on `.reload config` via `OnAfterConfigLoad`).
+  in `Manager::LoadConfig()` (re-run on `.reload config` via `OnAfterConfigLoad`). Keys that mean the
+  same thing in PvP share their name after the prefix (`Bots.*`, `Population.BudgetMode`,
+  `Antics.*`, `DuelMedics.*`, `Audit.*`); keep it that way.
 - Keep the README's invariants: borrow bots as-is (no level/talent/stat changes), never touch real
   players or player-owned bots, exempt GMs from greetings/whispers, chatter and economic interactions default off.

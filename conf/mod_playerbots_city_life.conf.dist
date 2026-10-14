@@ -20,13 +20,18 @@ CityLife.StartupDelaySeconds = 90
 # Population and behavior management interval (in seconds).
 CityLife.TickSeconds = 10
 
+# Write arrivals, departures and walk-offs to a plain-text audit log beside the server logs
+# (the same writer as PvPLife.Audit.*).
+CityLife.Audit.Enable = 1
+CityLife.Audit.FilePath = "Logs/citylife_audit.log"
+
 ###################################################################################################
 # Population Allocation & Demand Profiles
 ###################################################################################################
 
 # Population Budget Mode:
 # "percentage" calculates target based on a percentage of the online eligible playerbot pool.
-# "count" uses the fixed count specified below.
+# "count" uses the fixed count specified below ("fixed" means the same, as in PvPLife).
 CityLife.Population.BudgetMode = "percentage"
 
 # Fixed population target when BudgetMode is set to "count".
@@ -45,7 +50,11 @@ CityLife.Population.MaxTotal = 120
 # Demand Mode:
 # "fixed"   - Populates each hub to its full allocation (subject to time-of-day scaling).
 # "dynamic" - Only populates hubs that currently have real players in them.
-# "hybrid"  - Keeps a low baseline in unattended hubs, and bursts to max when a player enters.
+# "hybrid"  - Keeps a floor (BaselinePercent) in unattended hubs, and fills up to the full allocation
+#             while a player is there, one resident at a time (WatchedPace*).
+# A player is "in" a hub by mod-playerbots' own BotActiveAlone wake rule (Playerbots.BotActiveAlone
+# ForceWhenInZone / ForceWhenInMap / ForceWhenInRadius around any of the hub's spots), the same rule
+# that decides whether bots there are awake. A GM hidden with .gm visible off does not count.
 CityLife.Population.DemandMode = "hybrid"
 
 # Hub distribution profile:
@@ -55,16 +64,25 @@ CityLife.Population.DemandMode = "hybrid"
 # "legacy" - Sequential allocation: fills hubs in configured order until budget is exhausted.
 CityLife.Population.Distribution = "scaled"
 
-# Minimum population baseline percentage retained in unattended hubs under "hybrid" mode.
-# Set to 20% so unoccupied cities maintain a gentle ambient presence without wasting pool capacity.
-CityLife.Population.BaselinePercent = 20
+# The floor an unattended hub keeps under "hybrid", in percent of its allocation (never below the
+# hub's own CityLife.Hub.<name>.Min). High enough that a player arriving finds a lived-in city that
+# fills up around them, rather than a near-empty one that suddenly fills.
+CityLife.Population.BaselinePercent = 50
 
 # Grace period (in seconds) before scaling down a hub after the last real player leaves.
 CityLife.Population.BurstGraceSeconds = 180
 
-# Maximum number of bot borrows or releases executed per tick to prevent CPU spikes.
-# A release still waiting after 30 seconds is completed at once (bot restored, and sent home
-# when CityLife.Bots.ReturnWhenReleased is on).
+# While a real player is in a hub, residents come and go one at a time: one arrival or one departure
+# every WatchedPaceMin-Max seconds. Arrivals walk in from out of sight (from where the bot stands
+# when it is close, else from a drop-off no player can see; a bot that has neither waits). Departures
+# go the way a residence ends: to an inn bed first where the hub has one, then a walk off. Unwatched
+# hubs fill and empty at MaxChangesPerTick, as nobody sees it.
+CityLife.Population.WatchedPaceMinSeconds = 10
+CityLife.Population.WatchedPaceMaxSeconds = 40
+
+# Maximum number of bot borrows executed per tick, and releases per second, to prevent CPU spikes.
+# A release still waiting after 120 seconds (in combat, mid-teleport) is completed at once (bot
+# restored, and sent home when CityLife.Bots.ReturnWhenReleased is on).
 CityLife.Population.MaxChangesPerTick = 3
 
 # Coexistence with mod-hearthside-pvp needs no setting: City Life always consults the shared
@@ -86,6 +104,10 @@ CityLife.Bots.AccountPrefix = "auto"
 CityLife.Bots.AccountMin = 0
 CityLife.Bots.AccountMax = 0
 
+# Matching mode when both an account range and a prefix are set (as PvPLife.Bots.AccountFilterMode).
+# "legacy_any" = range OR prefix; "all" = must match BOTH.
+CityLife.Bots.AccountFilterMode = "legacy_any"
+
 # Maximum number of online bot candidates evaluated per hub reconciliation.
 # Set to 0 to enable dynamic census scaling (50% of live bots, bounded 100-1500).
 # Tuned to 500 for optimal memory footprint and query performance.
@@ -106,7 +128,8 @@ CityLife.Bots.SkipGrouped = 1
 # Keep disabled in standard random bot environments. If enabled, bots may be excluded due to BotActiveAlone.
 CityLife.Bots.RespectPlayerbotActivity = 0
 
-# Return bots to their original locations when released from city resident assignment.
+# Return bots to their original locations when released from city resident assignment. A bot a real
+# player can see walks off instead and carries on there as an ordinary bot.
 CityLife.Bots.ReturnWhenReleased = 1
 
 ###################################################################################################

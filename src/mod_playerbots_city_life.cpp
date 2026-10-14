@@ -53,9 +53,7 @@ class CityLifePlayerScript : public PlayerScript
 public:
     CityLifePlayerScript()
         : PlayerScript("CityLifePlayerScript", {
-            PLAYERHOOK_ON_LOGIN,
             PLAYERHOOK_ON_LOGOUT,
-            PLAYERHOOK_ON_UPDATE_ZONE,
             PLAYERHOOK_CAN_INIT_TRADE,
             PLAYERHOOK_CAN_SET_TRADE_ITEM,
             PLAYERHOOK_ON_BEFORE_ACHI_COMPLETE,
@@ -65,19 +63,9 @@ public:
     {
     }
 
-    void OnPlayerLogin(Player* player) override
-    {
-        sCityLifeMgr.OnPlayerLogin(player);
-    }
-
     void OnPlayerLogout(Player* player) override
     {
         sCityLifeMgr.OnPlayerLogout(player);
-    }
-
-    void OnPlayerUpdateZone(Player* player, uint32 newZone, uint32 /*newArea*/) override
-    {
-        sCityLifeMgr.OnPlayerZoneUpdate(player, newZone);
     }
 
     void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type) override

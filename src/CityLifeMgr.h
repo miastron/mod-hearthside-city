@@ -9,6 +9,9 @@
 
 #include "CityLifeTypes.h"
 #include "LifeMedic.h"
+#include "LifeBots.h"
+#include "LifePresence.h"
+#include "LifeAudit.h"
 #include "AsyncCallbackProcessor.h"
 #include "QueryCallback.h"
 #include "Transaction.h"
@@ -26,16 +29,17 @@ class Player;
 
 namespace CityLife
 {
-    // A playerbot's session, by account, whether or not mod-playerbots has
-    // attached its AI yet: it attaches after OnPlayerLogin, so ::IsRealPlayer()
-    // alone reads every bot logging in as a human. Stands in for the
-    // WorldSession::IsBot() this module was written against, which this core
-    // does not have. Also true for accounts matched by CityLife.Bots.AccountPrefix/Min/Max.
+    // LifeBots::IsBotSession / IsHumanPlayer with this module's bot-account filter
+    // (CityLife.Bots.AccountPrefix/AccountMin/AccountMax/AccountFilterMode).
     bool IsBotSession(Player const* player);
+    bool IsHumanPlayer(Player const* player);
 
-    // A person at a game client: a session that is not a bot account and has no
-    // PlayerbotAI attached. A player-owned alt bot is therefore neither borrowable nor human.
-    bool IsHumanPlayer(Player* player);
+    // CityLife.Audit.*: Logs/citylife_audit.log by default.
+    inline LifeAudit::Logger& AuditLogger()
+    {
+        static LifeAudit::Logger logger;
+        return logger;
+    }
 
     class Manager
     {
@@ -48,8 +52,6 @@ namespace CityLife
         bool HandleCommand(ChatHandler* handler, std::string const& text);
 
         // Interaction & Player Event Callbacks
-        void OnPlayerZoneUpdate(Player* player, uint32 zoneId);
-        void OnPlayerLogin(Player* player);
         void OnPlayerLogout(Player* player);
         void DisengageResident(uint32 guidLow);
         // PlayerScript/GroupScript hooks can fire on map-update threads (a bot's own AI logs it out
@@ -83,13 +85,13 @@ namespace CityLife
         bool ValidateResidentAction(Player* bot, Resident const& resident) const;
         bool IsHumanControlled(Player* player) const;
         bool IsConfiguredBotAccount(uint32 accountId) const;
+        LifeBots::AccountFilter const& Accounts() const { return _accounts; }
 
     private:
         Manager() = default;
 
         bool VerifyDatabase();
         bool LoadData();
-        void ImportPlayerbotDefaults();
         bool CheckCoexistence();
 
         TeamSide TeamForRace(uint8 race) const;
@@ -98,7 +100,7 @@ namespace CityLife
         bool IsCandidate(Player* player);
         // True if this bot's mod-hearthside-chat archetype is on CityLife.Bots.Archetypes
         // (or that list is empty, or the chat module is not in the build).
-        bool FitsArchetype(uint32 guidLow);
+        bool FitsArchetype(uint32 guidLow) const { return _archetypeFilter.Fits(guidLow); }
         bool IsResidentUsable(Player* player) const;
         uint32 GetLiveWorldBotCount(bool forceRefresh = false) const;
         std::vector<BotCandidate> LoadCandidates(Hub const& hub, uint32 poolCount = 0);
@@ -118,11 +120,22 @@ namespace CityLife
         static bool DistrictMatchesClass(std::string const& hubName, std::string const& district, uint8 botClass);
 
         uint32 CountResidents(uint32 hubId) const;
+        // Residents of the hub that are not on their way out (bound for an inn bed, or due to leave).
+        uint32 CountStaying(uint32 hubId) const;
+        static bool IsLeaving(Resident const& resident, uint32 nowSec);
+        // mod-playerbots' BotActiveAlone wake rule for the hub (its zone, its map, or the radius
+        // around any of its spots), held for CityLife.Population.BurstGraceSeconds after the player
+        // leaves. Refreshes the snapshot (at most every 3s).
+        bool PlayerPresent(Hub const& hub) const;
         // Wintergrasp hubs sit in the battlefield zone; while its battle runs they take no residents.
         bool IsWintergraspWarHub(Hub const& hub) const;
         uint32 TargetPopulation(Hub const& hub) const;
         uint32 CurrentTimeMultiplier() const;
         uint32 CalculateTotalBudget(uint32 eligiblePoolCount) const;
+        // While a real player is in a hub its residents come and go one at a time
+        // (CityLife.Population.WatchedPaceMin/MaxSeconds); true if this hub's next change may happen now.
+        bool PaceAllows(Hub const& hub, uint32 nowSec) const;
+        void PaceUsed(Hub const& hub, uint32 nowSec);
 
         bool AddResident(Hub const& hub, uint32 poolCount = 0);
         bool AdmitResident(Hub const& hub, BotCandidate const& bot, PlayerbotsLife::LeaseToken token);
@@ -130,12 +143,20 @@ namespace CityLife
         void CancelAdmissions();
         void ReleaseResident(Resident const& resident, bool returnHome);
         void ProcessReleasingResidents(bool isShutdown = false);
+        // The release itself, once the bot is ours to restore: restores its state and sends it home,
+        // or walks it off when a real player can see it (LifeArrival::WalkOff).
+        void FinishRelease(Player* player, Resident& resident, bool returnHome, bool allowTeleport);
         void ReleaseAll(bool returnHome);
         void QueueMutation(std::string const& sql, uint32 gmGuidLow = 0, std::string const& successMsg = "");
         void RemoveUnavailableResidents();
         void MaintainPopulation();
         void MaintainResidents();
         void RelocateResident(Resident& resident, Hub const& hub);
+        // Starts the walk in of residents dropped off out of sight on arrival (every ~250 ms).
+        void ProcessArrivals();
+        // Keeps mod-playerbots' level brackets from re-leveling a resident (LifeBots::HoldLevels).
+        void KeepResidentLevelsFixed();
+        void AuditLog(std::string const& tag, std::string const& text) const;
         // Advances running antics and starts mid-air dismounts; every ~100 ms from Update.
         void UpdateAntics();
         // Healer residents who now and then heal the duelists of a duel that just finished in front
@@ -170,25 +191,33 @@ namespace CityLife
         uint32 _timerMs = 0;
 
         // Population Budget & Demand Profiles
-        BudgetMode _budgetMode = BudgetMode::Percentage;
+        bool _budgetPercentage = true; // CityLife.Population.BudgetMode: percentage, or count (fixed)
         uint32 _fixedCount = 100;
         uint32 _borrowPercent = 10;
         uint32 _maxTotalPopulation = 120;
         DemandMode _demandMode = DemandMode::Hybrid;
         DistributionMode _distributionMode = DistributionMode::Scaled;
-        uint32 _baselinePercent = 20;
+        uint32 _baselinePercent = 50; // the floor an empty hub keeps (hybrid)
         uint32 _burstGraceSeconds = 180;
+        uint32 _watchedPaceMinSeconds = 10;
+        uint32 _watchedPaceMaxSeconds = 40;
+        std::unordered_map<uint32, uint32> _hubNextChangeAt; // hub id -> game time its next watched change may happen
+        mutable std::unordered_map<uint32, uint32> _hubLastPresentAt; // hub id -> game time a player last woke it
+        mutable LifePresence::Snapshot _presence;
         uint32 _maxChangesPerTick = 3;
+        // Releases have their own allowance, MaxChangesPerTick a second (ProcessReleasingResidents).
+        uint32 _releasesThisSecond = 0;
+        uint32 _releaseSecond = 0;
 
         // Candidate Filters & Safety
         bool _usePlayerbotConfig = true;
         std::string _botAccountPrefix = "auto";
         uint32 _botAccountMin = 0;
         uint32 _botAccountMax = 0;
+        bool _accountsRequireBoth = false; // CityLife.Bots.AccountFilterMode = all
+        LifeBots::AccountFilter _accounts;
         uint32 _botQueryLimit = 500;
-        std::string _archetypes;           // CityLife.Bots.Archetypes, comma-separated mod-hearthside-chat enum names
-        bool _archetypeFilter = false;     // the list is set and the chat module is in the build
-        uint32 _archetypeMask = 0;         // with _archetypeFilter, 0 = no bot fits
+        LifeBots::ArchetypeFilter _archetypeFilter; // CityLife.Bots.Archetypes
         bool _skipGroupedBots = true;
         bool _respectPlayerbotActivity = false;
         bool _returnBots = true;
@@ -253,6 +282,10 @@ namespace CityLife
         std::vector<LifeMedic::DuelEnd> _duelEnds;
         std::vector<LifeMedic::PendingHeal> _pendingHeals;
 
+        // Audit log
+        bool _auditEnable = true;
+        std::string _auditFilePath = "Logs/citylife_audit.log";
+
         // Hops on the way
         bool _travelHops = true;
         float _travelHopRadius = 80.0f;
@@ -261,6 +294,7 @@ namespace CityLife
         uint32 _travelHopMaxJumps = 5;
         uint32 _travelHopTimerMs = 0;
         uint32 _travelHopsDone = 0;
+        uint32 _travelHopPruneMs = 0;
         struct TravelHopState
         {
             uint32 NextMs = 0;
@@ -268,8 +302,6 @@ namespace CityLife
             uint8 Left = 0; // jumps left in the burst under way
         };
         std::unordered_map<uint32, TravelHopState> _travelHopStates;
-        std::vector<uint32> _humanGuids; // real players online, refreshed every few seconds
-        uint32 _humanGuidsRefreshMs = 0;
 
         // Movement & Sink Settings
         uint32 _mountBetweenPoiChance = 90;
@@ -315,14 +347,9 @@ namespace CityLife
         std::vector<ReleasingResident> _releasingResidents;
         std::vector<Resident> _residents;
         std::unordered_map<uint32, uint32> _hubResidentCounts;
-        std::unordered_map<uint32, bool> _botAccountCache;
-        mutable std::mutex _botAccountMutex; // IsBotSession reads the cache from map-update threads
-        mutable std::mutex _hubRealPlayerMutex;
         void ProcessQueuedDisengages();
         std::mutex _queuedDisengageMutex;
         std::vector<uint32> _queuedDisengages;
-        mutable std::unordered_map<uint32, uint32> _hubLastRealPlayerTime; // HubId -> timestamp
-        mutable std::unordered_map<uint32, std::vector<uint32>> _zoneToHubIds; // ZoneId -> HubIds (thread-safe lookup)
         mutable uint32 _cachedLiveBotCount = 0;
         mutable uint32 _lastCensusTimeMs = 0;
         mutable std::vector<uint32> _cachedOnlineGuids;
@@ -349,5 +376,6 @@ namespace CityLife
 }
 
 #define sCityLifeMgr CityLife::Manager::Instance()
+#define sCityLifeAudit CityLife::AuditLogger()
 
 #endif
