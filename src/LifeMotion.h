@@ -236,7 +236,14 @@ namespace LifeMotion
         move.JumpLimit = 12.0f;
         move.Jump = true;
         move.TellPlayerbots = false;
-        return Launch(bot, move, Bound(), out);
+        if (!Launch(bot, move, Bound(), out))
+            return false;
+        // The jump sits on top of the point move, which only resets (stops) when the jump ends and
+        // then, finding its spline finished, takes itself for arrived: the bot stood still until
+        // mod-playerbots sent it on again (realm 2026-10-14: bots stopping after every hop). Flagging
+        // a speed change makes it relaunch the rest of its path from wherever the bot lands.
+        bot->GetMotionMaster()->propagateSpeedChange();
+        return true;
     }
 
     // ---------------------------------------------------------------- idle antics
