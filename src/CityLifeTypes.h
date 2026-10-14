@@ -16,6 +16,7 @@
 #endif
 #include "../../mod-hearthside-life/src/LifeMotion.h"
 #include "../../mod-hearthside-life/src/LifeBots.h"
+#include "../../mod-hearthside-life/src/LifeActivity.h"
 
 #include <string>
 #include <vector>

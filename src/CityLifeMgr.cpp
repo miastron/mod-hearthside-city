@@ -1558,7 +1558,7 @@ namespace CityLife
                 r.ChatPartnerGuid == 0 && r.Activity == CitizenActivity::CrowdSocial)
             {
                 Player* p = FindPlayer(r.Bot.GuidLow);
-                if (p && p->IsInWorld() && bot->GetDistance(p) <= 15.0f)
+                if (p && p->IsInWorld() && !Talking(p) && bot->GetDistance(p) <= 15.0f)
                     return p;
             }
         }
@@ -2000,7 +2000,7 @@ namespace CityLife
             Player* player = FindPlayer(resident->Bot.GuidLow);
             Hub* hub = FindHub(resident->HubId);
             bool residenceExpired = resident->ReleaseAt != 0 && resident->ReleaseAt <= now && player &&
-                !player->IsInCombat() && !player->IsBeingTeleported();
+                !player->IsInCombat() && !player->IsBeingTeleported() && !Talking(player);
             // Wintergrasp battle started: leave the zone through the normal (throttled, restoring) release.
             bool warHub = hub && IsWintergraspWarHub(*hub);
             bool leaseLost = !PlayerbotsLife::ValidateActiveLease(resident->Token);
@@ -2106,14 +2106,15 @@ namespace CityLife
             // bed first where the hub has one, then a walk off); unwatched, they go at once.
             while (CountStaying(hub.Id) > target && changes < _maxChangesPerTick && PaceAllows(hub, nowSec))
             {
-                // The last admitted first, among those free to go: not fighting, dueling, mid-antic or chatting.
+                // The last admitted first, among those free to go: not fighting, dueling, mid-antic, chatting
+                // or cast in a Chat conversation.
                 auto found = std::find_if(_residents.rbegin(), _residents.rend(),
                     [&](Resident const& resident)
                     {
                         Player* player = FindPlayer(resident.Bot.GuidLow);
                         return resident.HubId == hub.Id && !IsLeaving(resident, nowSec) && player &&
                             !player->IsInCombat() && !player->IsBeingTeleported() && !player->duel &&
-                            !LifeMotion::Running(resident.Antic) && !resident.ChatPartnerGuid;
+                            !LifeMotion::Running(resident.Antic) && !resident.ChatPartnerGuid && !Talking(player);
                     });
                 if (found == _residents.rend())
                     break;
@@ -2278,6 +2279,10 @@ namespace CityLife
                 continue;
             // An antic under way moves the bot itself (UpdateAntics, every ~100 ms); leave it be.
             if (LifeMotion::Running(resident.Antic))
+                continue;
+            // Mid-conversation (mod-hearthside-chat): no relocation, leash, activity change or antic
+            // until the scene ends.
+            if (Talking(player))
                 continue;
             // Sink Forensics Check
             Movement::CheckSinkForensics(player, resident.LastSweepZ, _sinkForensics);
@@ -2575,7 +2580,7 @@ namespace CityLife
                 if (!resident.AtSpot || resident.Sitting || resident.ChatPartnerGuid || LifeMotion::Running(resident.Antic))
                     continue;
                 Player* player = FindPlayer(resident.Bot.GuidLow);
-                if (!player || player->GetMapId() != end.MapId || !ValidateResidentAction(player, resident))
+                if (!player || player->GetMapId() != end.MapId || Talking(player) || !ValidateResidentAction(player, resident))
                     continue;
                 PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
                 if (ai && ai->AllowActivity())

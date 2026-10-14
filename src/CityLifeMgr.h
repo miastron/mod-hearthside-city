@@ -102,6 +102,9 @@ namespace CityLife
         // (or that list is empty, or the chat module is not in the build).
         bool FitsArchetype(uint32 guidLow) const { return _archetypeFilter.Fits(guidLow); }
         bool IsResidentUsable(Player* player) const;
+        // Cast in a mod-hearthside-chat conversation (LifeActivity): not moved, given an antic, paired or
+        // released while idle until the scene ends.
+        static bool Talking(Player const* player) { return player && LifeActivity::Busy(player->GetGUID().GetRawValue()); }
         uint32 GetLiveWorldBotCount(bool forceRefresh = false) const;
         std::vector<BotCandidate> LoadCandidates(Hub const& hub, uint32 poolCount = 0);
 

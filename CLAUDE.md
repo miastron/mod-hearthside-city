@@ -128,9 +128,12 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums), `CityLifeDialogues.h`
   and `CityLifePopulation.h` (static data tables).
 - **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
-  using `../mod-hearthside-chat`'s GUID-fixed personality. `LifeBots.h` picks it up with
-  `__has_include("hs_archetype.h")` and calls `Hs_ArchetypeForBot` / `Hs_ArchetypeMaskForNames`;
-  without that module every bot fits. Changing those signatures in the chat module breaks this build.
+  using `../mod-hearthside-chat`'s GUID-fixed personality, asked through Life's `LifeArchetypes`
+  (Chat registers the provider). City never includes Chat's headers. Without a provider (Chat not
+  installed, or `HearthsideChat.Enable`/`HearthsideChat.Life.Enable` off) every bot fits.
+- **Busy marks**: Chat marks the bots it casts in a /say scene (`LifeActivity`). `Manager::Talking`
+  is checked in `MaintainResidents` (no relocation, leash, activity change or antic), the
+  population shrink, a residence's expiry, crowd-partner picking and medics: a busy resident waits.
 
 ## Data and SQL
 
