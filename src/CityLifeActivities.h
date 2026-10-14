@@ -19,9 +19,8 @@ namespace CityLife
     namespace Activities
     {
         void ExecuteLivingCrowd(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                                bool enableSay, uint32 sayCooldownSec, float playerRadius,
-                                uint32 chatCooldownSec, uint32 afkMinSec, uint32 afkMaxSec,
-                                bool enableAfk = true);
+                                float playerRadius, uint32 chatCooldownSec, uint32 afkMinSec,
+                                uint32 afkMaxSec, bool enableAfk = true);
 
         // Faces the nearest duel in progress within watchRadius (mod-hearthside-pvp's, or any other)
         // and cheers it on; with no duel running the spectator just waits at its stand.
@@ -29,11 +28,9 @@ namespace CityLife
 
         void ExecuteFishing(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
-        void ExecuteInnDance(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                             bool enableSay, uint32 sayCooldownSec);
+        void ExecuteInnDance(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
-        void ExecutePlazaSocial(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                                bool enableUnrestricted, uint32 randomSayChance, uint32 sayCooldownSec);
+        void ExecutePlazaSocial(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
         void ExecuteTavernSitting(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 

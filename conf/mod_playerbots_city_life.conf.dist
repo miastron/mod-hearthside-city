@@ -195,7 +195,8 @@ CityLife.Weight.ReturnToInn = 15
 
 # Non-combat strategy string applied to resident bots. Keep "-new rpg": with
 # Playerbots.EnableNewRpgStrategy on, it walks residents off to an innkeeper/flight master.
-# While all CityLife.Chat options are off, "-chat,-emote" is added as well.
+# "-mount,-chat,-emote" is always added: City Life mounts residents itself, and a resident's only
+# voice is mod-hearthside-chat's.
 CityLife.Strategies.NonCombat = "+stay,-follow,-passive,-grind,-rpg,-new rpg,-travel,-duel,-pvp"
 
 ###################################################################################################
@@ -294,7 +295,8 @@ CityLife.TravelHops.MaxJumps = 5
 ###################################################################################################
 
 # Enable living-crowd scenes at capital bank and auction house spots (lingering, wandering,
-# AFK flags). Crowd conversations also need CityLife.Chat.ScriptedConversations, which is off.
+# AFK flags, pairs facing each other). City Life says nothing: with mod-hearthside-chat (and
+# mod-hearthside-life) installed, a pair near a real player may hold one of its conversations.
 CityLife.Crowd.Enable = 1
 
 # Real-player proximity radius (in yards). Crowd logic wakes when a player enters this range.
@@ -333,21 +335,11 @@ CityLife.Movement.MountBetweenPoiChance = 90
 CityLife.Movement.SinkForensics = 1
 
 ###################################################################################################
-# Chat, Economy & Interaction Safeguards
+# Economy & Interaction Safeguards
 ###################################################################################################
 
-# Enable canned paired conversations between bots in crowd and plaza areas.
-# Default: 0 (Disabled - completely silent operation).
-CityLife.Chat.ScriptedConversations = 0
-
-# Enable friendly greetings directed at nearby real players.
-# Default: 0 (Disabled - completely silent operation).
-CityLife.Chat.Greetings = 0
-
-# Allow unrestricted random /say speech (disabled by default to prevent cascade).
-CityLife.Chat.Unrestricted = 0
-CityLife.Chat.RandomSayChance = 0
-CityLife.Chat.SayCooldownSec = 30
+# City Life never makes a bot speak: the CityLife.Chat.* keys are gone. Bot speech is
+# mod-hearthside-chat's alone.
 
 # Enable economic interactions (trading, food purchasing). Disabled by default: with BuyFood on,
 # a resident at a food vendor really buys (mod-playerbots' "rpg buy"), spending its own gold.

@@ -123,18 +123,21 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
   the spectator role (`CitizenRole::Spectator`, `WatchDuels`): residents of hubs whose name contains
   "gate" or "duel" (`Hub::DuelHub`) or at `DuelRing` spots watch any duel in progress nearby.
-- **`CityLifeActivities.*`** (crowd chat/AFK, duel spectators, fishing, inn dancing, tavern, NPC
+- **`CityLifeActivities.*`** (crowd pairs/AFK, duel spectators, fishing, inn dancing, tavern, NPC
   and mailbox visits, wall patrol, the inn sleep before release), **`CityLifeMovement.*`** (pathing validation, water/canal avoidance, mounting, sink
-  detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums), `CityLifeDialogues.h`
-  and `CityLifePopulation.h` (static data tables).
+  detection), **`CityLifeTypes.h`** (Hub/Spot/Resident structs and enums) and `CityLifePopulation.h`
+  (static data tables).
+- **No bot speech.** City never calls `Say`/`Yell`/`Whisper` for a bot (the `CityLife.Chat.*` keys and
+  `CityLifeDialogues.h` were removed 2026-10-14). Speech is `../mod-hearthside-chat`'s, reached
+  through Life's events. `ApplyCityStrategies` always strips mod-playerbots' `chat` and `emote`
+  strategies. Keep it that way.
 - **Archetype filter (fork-only)**: `CityLife.Bots.Archetypes` restricts which bots may be borrowed
   using `../mod-hearthside-chat`'s GUID-fixed personality, asked through Life's `LifeArchetypes`
   (Chat registers the provider). City never includes Chat's headers. Without a provider (Chat not
   installed, or `HearthsideChat.Enable`/`HearthsideChat.Life.Enable` off) every bot fits.
 - **Crowd pairs**: a crowd resident lingering near a real player now and then pairs with another
   (`FindCrowdChatPartner` → `BeginCrowdChat`): they face each other and hold the pair until its
-  45 s deadline. Pairing no longer depends on `CityLife.Chat.ScriptedConversations` (that key only
-  adds City's own lines). Each pair publishes `LifeEvents::CrowdPair` with the real player as
+  45 s deadline. Each pair publishes `LifeEvents::CrowdPair` with the real player as
   witness; Chat offers the pair a /say script.
 - **Busy marks**: Chat marks the bots it casts in a /say scene (`LifeActivity`). `Manager::Talking`
   is checked in `MaintainResidents` (no relocation, leash, activity change or antic), the
@@ -166,4 +169,4 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   same thing in PvP share their name after the prefix (`Bots.*`, `Population.BudgetMode`,
   `Antics.*`, `DuelMedics.*`, `Audit.*`); keep it that way.
 - Keep the README's invariants: borrow bots as-is (no level/talent/stat changes), never touch real
-  players or player-owned bots, exempt GMs from greetings/whispers, chatter and economic interactions default off.
+  players or player-owned bots, no bot speech, economic interactions default off.

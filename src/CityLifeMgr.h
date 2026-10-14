@@ -313,11 +313,6 @@ namespace CityLife
         bool _sinkForensics = true;
 
         // Chat & Interaction Settings
-        bool _chatScriptedConversations = true;
-        bool _chatGreetings = true;
-        bool _chatUnrestricted = false;
-        uint32 _chatRandomSayChance = 0;
-        uint32 _chatSayCooldownSec = 30;
         bool _enableInteractions = false;
         bool _enableBuyFood = false;
         bool _enablePlayerTrading = false;

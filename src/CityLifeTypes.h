@@ -185,7 +185,6 @@ namespace CityLife
         bool Sitting = false;
         bool AfkSetByModule = false;
         bool DancingSetByModule = false;
-        uint32 LastSayMs = 0;
 
         // Navigation, Mounting & Sink Forensics
         float LastSweepZ = 0.0f;
@@ -198,9 +197,6 @@ namespace CityLife
         uint32 LastCrowdChatMs = 0;
         uint32 ChatPartnerGuid = 0;
         uint32 ChatDeadlineMs = 0;
-        uint8 ChatLineIdx = 0;
-        int16 ChatDialogueId = -1;
-        bool ChatInitiator = false;
 
         // Alternating District Roam State
         bool LastRoamWasHub = false;

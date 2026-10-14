@@ -6,7 +6,6 @@
 
 #include "CityLifeMgr.h"
 #include "CityLifeActivities.h"
-#include "CityLifeDialogues.h"
 #include "CityLifeMovement.h"
 #include "CityLifePopulation.h"
 #include "Item.h"
@@ -368,11 +367,6 @@ namespace CityLife
         _sinkForensics = sConfigMgr->GetOption<bool>("CityLife.Movement.SinkForensics", true);
 
         // Chat & Interactions
-        _chatScriptedConversations = sConfigMgr->GetOption<bool>("CityLife.Chat.ScriptedConversations", false);
-        _chatGreetings = sConfigMgr->GetOption<bool>("CityLife.Chat.Greetings", false);
-        _chatUnrestricted = sConfigMgr->GetOption<bool>("CityLife.Chat.Unrestricted", false);
-        _chatRandomSayChance = std::min<uint32>(100, sConfigMgr->GetOption<uint32>("CityLife.Chat.RandomSayChance", 0));
-        _chatSayCooldownSec = std::min<uint32>(DAY, sConfigMgr->GetOption<uint32>("CityLife.Chat.SayCooldownSec", 30));
         _enableInteractions = sConfigMgr->GetOption<bool>("CityLife.Interactions.Enable", false);
         _enablePlayerTrading = sConfigMgr->GetOption<bool>("CityLife.Interactions.PlayerTrading", false);
         _enableBuyFood = sConfigMgr->GetOption<bool>("CityLife.Interactions.BuyFood", false);
@@ -1584,36 +1578,12 @@ namespace CityLife
         if (!partnerResident)
             return;
 
-        // City's own lines only with CityLife.Chat.ScriptedConversations; otherwise the pair just
-        // stands together and whoever listens to CrowdPair may give them a conversation.
-        int16 dialogueId = -1;
-        if (_chatScriptedConversations)
-        {
-            CityPoiType pool = CityPoiType::Plaza;
-            if (Spot const* spot = FindSpot(resident.HubId, resident.SpotId))
-            {
-                if (spot->PoiType == CityPoiType::Bank || spot->PoiType == CityPoiType::AuctionHouse)
-                    pool = spot->PoiType;
-            }
-
-            std::vector<int16> candidates;
-            for (int16 i = 0; i < Dialogues::kCrowdDialogueCount; ++i)
-            {
-                if (Dialogues::kCrowdDialogues[i].Pool == pool || Dialogues::kCrowdDialogues[i].Pool == CityPoiType::Plaza)
-                    candidates.push_back(i);
-            }
-            if (!candidates.empty())
-                dialogueId = candidates[urand(0, static_cast<uint32>(candidates.size() - 1))];
-        }
-
-        resident.ChatDialogueId = dialogueId;
+        // City says nothing: the pair stands together, and whoever listens to CrowdPair may give them
+        // a conversation.
         resident.ChatPartnerGuid = partnerGuidLow;
-        resident.ChatInitiator = true;
-        resident.ChatLineIdx = 0;
         resident.ChatDeadlineMs = now + 45 * 1000;
 
         partnerResident->ChatPartnerGuid = bot->GetGUID().GetCounter();
-        partnerResident->ChatInitiator = false;
         partnerResident->ChatDeadlineMs = resident.ChatDeadlineMs;
 
         bot->SetFacingToObject(partner);
@@ -1644,9 +1614,6 @@ namespace CityLife
             if (r.Bot.GuidLow == partnerGuidLow && r.ChatPartnerGuid == expectedGuidLow)
             {
                 r.ChatPartnerGuid = 0;
-                r.ChatInitiator = false;
-                r.ChatDialogueId = -1;
-                r.ChatLineIdx = 0;
                 r.ChatDeadlineMs = 0;
                 r.LastCrowdChatMs = GameTimeMS();
                 break;
@@ -2478,8 +2445,8 @@ namespace CityLife
             {
                 case CitizenActivity::CrowdSocial:
                     if (_actCrowdScenes && _crowdEnable)
-                        Activities::ExecuteLivingCrowd(resident, player, *hub, nowMs, _chatScriptedConversations,
-                            _chatSayCooldownSec, _crowdPlayerRadius, _crowdChatCooldownSec, _crowdAfkMinSec, _crowdAfkMaxSec, _activitiesAfkEnable);
+                        Activities::ExecuteLivingCrowd(resident, player, *hub, nowMs, _crowdPlayerRadius,
+                            _crowdChatCooldownSec, _crowdAfkMinSec, _crowdAfkMaxSec, _activitiesAfkEnable);
                     break;
                 case CitizenActivity::WatchDuels:
                     if (_actDuelWatching && TryStartAntic(resident, player, nowMs))
@@ -2493,11 +2460,11 @@ namespace CityLife
                     break;
                 case CitizenActivity::InnDance:
                     if (_actInnDancing)
-                        Activities::ExecuteInnDance(resident, player, *hub, nowMs, _chatGreetings, _chatSayCooldownSec);
+                        Activities::ExecuteInnDance(resident, player, *hub, nowMs);
                     break;
                 case CitizenActivity::PlazaSocial:
                     if (_actPlazaSocial)
-                        Activities::ExecutePlazaSocial(resident, player, *hub, nowMs, _chatUnrestricted, _chatRandomSayChance, _chatSayCooldownSec);
+                        Activities::ExecutePlazaSocial(resident, player, *hub, nowMs);
                     break;
                 case CitizenActivity::SitInTavern:
                     if (_actTavernSitting)
@@ -2744,9 +2711,8 @@ namespace CityLife
         // mod-playerbots' own mount check left on, an idle resident outdoors is remounted on its
         // timer, which casts over a hop in mid-air and undoes every arrival dismount (realm
         // 2026-10-14: a resident mounting and dismounting over and over). The journal restores it.
-        std::string strategiesToApply = _nonCombatStrategies + ",-mount";
-        if (!_chatScriptedConversations && !_chatGreetings && !_chatUnrestricted)
-            strategiesToApply += ",-chat,-emote";
+        // -chat,-emote: a resident's only voice is mod-hearthside-chat's, never mod-playerbots' own.
+        std::string strategiesToApply = _nonCombatStrategies + ",-mount,-chat,-emote";
         LifeBots::ChangeStrategies(GET_PLAYERBOT_AI(player), resident.Journal, strategiesToApply, BOT_STATE_NON_COMBAT);
     }
 

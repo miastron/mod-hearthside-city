@@ -5,7 +5,6 @@
  */
 
 #include "CityLifeActivities.h"
-#include "CityLifeDialogues.h"
 #include "CityLifeMovement.h"
 #include "CityLifeMgr.h"
 
@@ -103,9 +102,6 @@ namespace CityLife
             }
 
             resident.ChatPartnerGuid = 0;
-            resident.ChatInitiator = false;
-            resident.ChatDialogueId = -1;
-            resident.ChatLineIdx = 0;
             resident.ChatDeadlineMs = 0;
             resident.LastCrowdChatMs = static_cast<uint32>(GameTime::GetGameTimeMS().count());
         }
@@ -120,9 +116,8 @@ namespace CityLife
         }
 
         void ExecuteLivingCrowd(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                                bool enableSay, uint32 sayCooldownSec, float playerRadius,
-                                uint32 chatCooldownSec, uint32 afkMinSec, uint32 afkMaxSec,
-                                bool enableAfk)
+                                float playerRadius, uint32 chatCooldownSec, uint32 afkMinSec,
+                                uint32 afkMaxSec, bool enableAfk)
         {
             if (!bot || !bot->IsInWorld())
                 return;
@@ -196,55 +191,14 @@ namespace CityLife
                     break;
             }
 
-            // Pairing (always) and City's own lines (only with CityLife.Chat.ScriptedConversations).
-            // The stale-claim release above ends a pair at its deadline.
+            // Now and then pair up with another lingering resident: the two face each other until the
+            // pair's deadline (the stale-claim release above). City says nothing; a CrowdPair event lets
+            // mod-hearthside-chat give them a conversation.
+            if (resident.ChatPartnerGuid == 0 && now - resident.LastCrowdChatMs >= chatCooldownSec * 1000 &&
+                roll_chance_i(25))
             {
-                if (resident.ChatInitiator && enableSay && resident.ChatDialogueId >= 0 &&
-                    resident.ChatDialogueId < Dialogues::kCrowdDialogueCount)
-                {
-                    if (MsReached(now, resident.ChatDeadlineMs))
-                    {
-                        CrowdReleaseChat(bot, resident);
-                    }
-                    else
-                    {
-                        Dialogues::DialogueEntry const& d = Dialogues::kCrowdDialogues[resident.ChatDialogueId];
-                        if (resident.ChatLineIdx < d.LineCount &&
-                            now - resident.LastSayMs >= urand(3000, 6000))
-                        {
-                            bool const partnerLine = (resident.ChatLineIdx % 2) == 1;
-                            Player* speaker = bot;
-                            if (partnerLine)
-                            {
-                                ObjectGuid partnerGuid = ObjectGuid::Create<HighGuid::Player>(resident.ChatPartnerGuid);
-                                speaker = ObjectAccessor::FindPlayer(partnerGuid);
-                                if (!speaker || !speaker->IsInWorld() || bot->GetDistance(speaker) > 20.0f)
-                                {
-                                    CrowdReleaseChat(bot, resident);
-                                    return;
-                                }
-                            }
-
-                            speaker->Say(d.Lines[resident.ChatLineIdx], LANG_UNIVERSAL);
-                            resident.LastSayMs = now;
-                            ++resident.ChatLineIdx;
-
-                            if (resident.ChatLineIdx >= d.LineCount)
-                                CrowdReleaseChat(bot, resident);
-                        }
-                    }
-                }
-                else if (resident.ChatPartnerGuid == 0 &&
-                         now - resident.LastCrowdChatMs >= chatCooldownSec * 1000 &&
-                         roll_chance_i(25))
-                {
-                    // Scan for eligible partner in linger
-                    Player* partner = sCityLifeMgr.FindCrowdChatPartner(resident.HubId, bot);
-                    if (partner)
-                    {
-                        sCityLifeMgr.BeginCrowdChat(bot, partner, resident, now, realPlayer);
-                    }
-                }
+                if (Player* partner = sCityLifeMgr.FindCrowdChatPartner(resident.HubId, bot))
+                    sCityLifeMgr.BeginCrowdChat(bot, partner, resident, now, realPlayer);
             }
 
             if (!MsReached(now, resident.CrowdPhaseEndMs))
@@ -484,8 +438,7 @@ namespace CityLife
             }
         }
 
-        void ExecuteInnDance(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                             bool enableSay, uint32 sayCooldownSec)
+        void ExecuteInnDance(Resident& resident, Player* bot, Hub const& hub, uint32 now)
         {
             if (!bot || !bot->IsInWorld() || bot->isMoving() || !resident.AtSpot)
                 return;
@@ -507,38 +460,9 @@ namespace CityLife
                 bot->SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_STATE_DANCE);
                 resident.DancingSetByModule = true;
             }
-
-            // Greet a nearby real player, or now and then call out to the room.
-            if (enableSay && now - resident.LastSayMs >= sayCooldownSec * 1000)
-            {
-                if (Player* nearby = FindNearbyRealPlayer(bot, 6.0f))
-                {
-                    bot->SetFacingToObject(nearby);
-                    resident.LastSayMs = now;
-                    static char const* greetings[] = {
-                        "Hey there, {}!",
-                        "Welcome to the inn, {}!",
-                        "Enjoy your stay, {}!",
-                        "Hi, {}!"
-                    };
-                    bot->Say(Acore::StringFormat(greetings[urand(0, 3)], nearby->GetName()), LANG_UNIVERSAL);
-                }
-                else if (roll_chance_i(20))
-                {
-                    resident.LastSayMs = now;
-                    static char const* phrases[] = {
-                        "Welcome to the tavern!",
-                        "Best inn around!",
-                        "Another round for the house!",
-                        "Dance like nobody's watching!"
-                    };
-                    bot->Say(phrases[urand(0, 3)], LANG_UNIVERSAL);
-                }
-            }
         }
 
-        void ExecutePlazaSocial(Resident& resident, Player* bot, Hub const& hub, uint32 now,
-                                bool enableUnrestricted, uint32 randomSayChance, uint32 sayCooldownSec)
+        void ExecutePlazaSocial(Resident& resident, Player* bot, Hub const& hub, uint32 now)
         {
             if (!bot || !bot->IsInWorld() || bot->isMoving() || !resident.AtSpot)
                 return;
@@ -572,18 +496,6 @@ namespace CityLife
             {
                 bot->SetFacingToObject(neighbour);
                 bot->HandleEmoteCommand(roll_chance_i(50) ? EMOTE_ONESHOT_WAVE : EMOTE_ONESHOT_CHEER);
-
-                if (enableUnrestricted && now - resident.LastSayMs >= sayCooldownSec * 1000 && roll_chance_i(25))
-                {
-                    resident.LastSayMs = now;
-                    static char const* phrases[] = {
-                        "Hey {}! Good to see you.",
-                        "Lovely day in the city, {}!",
-                        "Busy day around here, {}!",
-                        "How fares the adventure, {}?"
-                    };
-                    bot->Say(Acore::StringFormat(phrases[urand(0, 3)], neighbour->GetName()), LANG_UNIVERSAL);
-                }
                 return;
             }
 
@@ -591,18 +503,6 @@ namespace CityLife
             {
                 static uint32 const emotes[] = { EMOTE_ONESHOT_WAVE, EMOTE_ONESHOT_CHEER, EMOTE_ONESHOT_LAUGH };
                 bot->HandleEmoteCommand(emotes[urand(0, 2)]);
-            }
-
-            if (enableUnrestricted && randomSayChance > 0 && roll_chance_i(randomSayChance) && now - resident.LastSayMs >= sayCooldownSec * 1000)
-            {
-                resident.LastSayMs = now;
-                static char const* shouts[] = {
-                    "Lovely weather in the city today!",
-                    "Who's up for an adventure?",
-                    "Busy day in the square!",
-                    "Good to see everyone around!"
-                };
-                bot->Say(shouts[urand(0, 3)], LANG_UNIVERSAL);
             }
         }
 
