@@ -82,6 +82,13 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   copies must stay **byte-compatible**; `AddCityLifeScripts()` calls `CheckProtocolVersion()`, which
   logs an error when another Life module registered a different `LIFE_BOT_RESERVATION_PROTOCOL_VERSION`.
   Change it in both repos together and bump the version.
+- **`LifeMotion.h`**: header-only, owned here and included by `mod-hearthside-pvp` straight from
+  this repo (`../../mod-hearthside-city/src/LifeMotion.h`), so a change here changes both modules.
+  `Launch` is one validated move (jump or curve, facing a unit, a held angle or the way it goes)
+  that mod-playerbots is told to wait out; PvP's duel footwork is built on it. `Routine` plays the
+  idle antics (Dance, Strafe, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
+  arrivals): `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
+  resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
 - **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
   bridge (`LifeTelemetryBridge.h`) were removed with upstream's 2026-10-12 commit; what is left is
   the spectator role (`CitizenRole::Spectator`, `WatchDuels`): residents of hubs whose name contains

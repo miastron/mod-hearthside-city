@@ -95,6 +95,25 @@ namespace CityLife
             }
         }
 
+        void ClearMountAndFlight(Player* bot)
+        {
+            if (!bot)
+                return;
+
+            // A bot borrowed mid-air (flying mount, flight form) and teleported into a city keeps its
+            // fly movement flags and hovers on the floor; mod-playerbots' ClearStaleFlightFlags clears
+            // the same flags once the fly auras are gone.
+            DismountIfMounted(bot);
+            bot->RemoveAurasByType(SPELL_AURA_FLY);
+            bot->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
+            if (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY | MOVEMENTFLAG_CAN_FLY))
+            {
+                bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY | MOVEMENTFLAG_CAN_FLY);
+                if (!bot->IsRooted())
+                    bot->SendMovementFlagUpdate();
+            }
+        }
+
         bool CanMountHere(Player* bot)
         {
             if (!bot || !bot->IsInWorld() || !bot->IsAlive())

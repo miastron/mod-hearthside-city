@@ -340,6 +340,7 @@ namespace CityLife
         _actTavernSitting = sConfigMgr->GetOption<bool>("CityLife.Activities.TavernSitting.Enable", true);
         _actTavernDrinking = sConfigMgr->GetOption<bool>("CityLife.Activities.TavernDrinking.Enable", true);
         _actRandomEmotes = sConfigMgr->GetOption<bool>("CityLife.Activities.RandomEmotes.Enable", true);
+        _antics = LifeMotion::LoadAnticConfig("CityLife.Antics");
         _actAuctionHouse = sConfigMgr->GetOption<bool>("CityLife.Activities.AuctionHouse.Enable", true);
         _actMailbox = sConfigMgr->GetOption<bool>("CityLife.Activities.Mailbox.Enable", true);
         _actTrainer = sConfigMgr->GetOption<bool>("CityLife.Activities.Trainer.Enable", true);
@@ -1912,6 +1913,7 @@ namespace CityLife
         SetStayPosition(player, resident);
         if (sRandomPlayerbotMgr.IsRandomBot(player))
             sRandomPlayerbotMgr.ScheduleTeleport(bot.GuidLow, std::max(ReservationSeconds, hub.ResidenceSeconds + MINUTE));
+        Movement::ClearMountAndFlight(player);
         Movement::MoveToPosition(player, hub.MapId, resident.TargetX, resident.TargetY, resident.TargetZ, resident.TargetO, true);
         _residents.push_back(resident);
         ++_hubResidentCounts[resident.HubId];
@@ -1978,6 +1980,8 @@ namespace CityLife
     {
         // A lease that is already gone (scavenged, or never promoted) still gets the restore pass:
         // ProcessReleasingResidents restores the bot unless another module now holds it.
+        if (LifeMotion::Running(resident.Antic))
+            LifeMotion::Halt(FindPlayer(resident.Bot.GuidLow), resident.Antic);
         PlayerbotsLife::BeginRelease(resident.Token);
         if (std::none_of(_releasingResidents.begin(), _releasingResidents.end(),
             [&](ReleasingResident const& pending) { return pending.Actor.Token.Generation == resident.Token.Generation; }))
@@ -2137,8 +2141,7 @@ namespace CityLife
         if (_distributionMode == DistributionMode::Scaled)
         {
             std::vector<PopulationWeight> weights;
-            uint64 baseWeight = 0;
-            uint64 effectiveWeight = 0;
+            uint64 totalDemand = 0;
             for (Hub const& hub : _hubs)
             {
                 targets[hub.Id] = 0;
@@ -2146,15 +2149,22 @@ namespace CityLife
                     continue;
                 uint32 demand = TargetPopulation(hub);
                 weights.push_back({ hub.Id, demand, hub.MinCount, hub.Priority });
-                baseWeight += hub.ConfiguredPopulation;
-                effectiveWeight += demand;
+                totalDemand += demand;
             }
-            double factor = baseWeight ? static_cast<double>(effectiveWeight) / baseWeight : 1.0;
-            uint32 requested = effectiveWeight ? static_cast<uint32>(
-                std::lround(totalBudget * std::min(1.0, factor))) : 0;
-            auto allocation = AllocatePopulation(weights, requested);
-            for (size_t index = 0; index < weights.size(); ++index)
-                targets[weights[index].HubId] = allocation[index];
+            // Every hub gets its full demand while the budget covers it; only an over-budget demand
+            // is shared out (minimums first, then by weight). Upstream shrank the budget itself by
+            // demand/configured, so one occupied city got a sliver of a budget eaten by minimums.
+            if (totalDemand <= totalBudget)
+            {
+                for (PopulationWeight const& weight : weights)
+                    targets[weight.HubId] = weight.Weight;
+            }
+            else
+            {
+                auto allocation = AllocatePopulation(weights, totalBudget);
+                for (size_t index = 0; index < weights.size(); ++index)
+                    targets[weights[index].HubId] = allocation[index];
+            }
         }
         else // Legacy sequential allocation
         {
@@ -2288,6 +2298,7 @@ namespace CityLife
             resident.Activity = nextActivity;
         uint32 nowSec = GameTimeSeconds();
         resident.NextMoveAt = nowSec + urand(_relocateMinSeconds, _relocateMaxSeconds);
+        resident.HopDismountRolled = false;
 
         SetStayPosition(player, resident);
 
@@ -2330,6 +2341,9 @@ namespace CityLife
             }
 
             if (player->IsInCombat() || player->duel || player->IsInFlight())
+                continue;
+            // An antic under way moves the bot itself (UpdateAntics, every ~100 ms); leave it be.
+            if (LifeMotion::Running(resident.Antic))
                 continue;
             // Sink Forensics Check
             Movement::CheckSinkForensics(player, resident.LastSweepZ, _sinkForensics);
@@ -2554,6 +2568,8 @@ namespace CityLife
                         Activities::ExecuteBuyFood(resident, player, *hub, nowMs, _enableInteractions && _enableBuyFood);
                     break;
                 case CitizenActivity::WanderDistrict:
+                    if (_actRoaming && TryStartAntic(resident, player, nowMs))
+                        break;
                     if (_actRoaming && MsReached(nowMs, resident.NextEmoteAtMs))
                     {
                         Activities::ExecuteRandomEmote(resident, player, *hub, nowMs);
@@ -2565,12 +2581,93 @@ namespace CityLife
                     break;
                 case CitizenActivity::RandomEmote:
                 default:
+                    if (_actRandomEmotes && resident.Activity == CitizenActivity::RandomEmote &&
+                        TryStartAntic(resident, player, nowMs))
+                        break;
                     if (_actRandomEmotes && MsReached(nowMs, resident.NextEmoteAtMs))
                     {
                         Activities::ExecuteRandomEmote(resident, player, *hub, nowMs);
                         resident.NextEmoteAtMs = nowMs + urand(_emoteMinSeconds, _emoteMaxSeconds) * 1000;
                     }
                     break;
+            }
+        }
+    }
+
+    bool Manager::TryStartAntic(Resident& resident, Player* player, uint32 nowMs, LifeMotion::Antic kind)
+    {
+        if (kind == LifeMotion::Antic::None)
+        {
+            // Only a resident standing about at its spot, not sitting, chatting or on its way somewhere.
+            if (!resident.AtSpot || resident.Sitting || resident.ChatPartnerGuid || player->isMoving() ||
+                !LifeMotion::Ready(resident.Antic, nowMs) || !LifeMotion::RollAntic(_antics, _tickSeconds * IN_MILLISECONDS))
+                return false;
+            kind = LifeMotion::PickAntic(_antics);
+        }
+        else if (LifeMotion::Running(resident.Antic))
+            LifeMotion::End(player, resident.Antic, nowMs, _antics);
+        if (!LifeMotion::Begin(player, resident.Antic, kind, nowMs, _antics))
+            return false;
+        if (_debug)
+            LOG_INFO("module", "[CityLife] {} starts antic {}.", player->GetName(), LifeMotion::AnticName(kind));
+        return true;
+    }
+
+    void Manager::UpdateAntics()
+    {
+        if (!_antics.Enable)
+        {
+            // Switched off by a config reload: finish whatever is under way.
+            for (Resident& resident : _residents)
+                if (LifeMotion::Running(resident.Antic))
+                    LifeMotion::End(FindPlayer(resident.Bot.GuidLow), resident.Antic, GameTimeMS(), _antics);
+            return;
+        }
+
+        uint32 nowMs = GameTimeMS();
+        for (Resident& resident : _residents)
+        {
+            bool running = LifeMotion::Running(resident.Antic);
+            // A resident riding in to its spot: some hop and get off in mid-air instead of stopping first.
+            bool arriving = !running && !resident.AtSpot && !resident.HopDismountRolled && _antics.HopDismountChance;
+            if (!running && !arriving)
+                continue;
+
+            Player* player = FindPlayer(resident.Bot.GuidLow);
+            if (arriving)
+            {
+                if (!player || !player->IsMounted() || !player->isMoving() ||
+                    player->GetDistance2d(resident.TargetX, resident.TargetY) > 9.0f ||
+                    !ValidateResidentAction(player, resident))
+                    continue;
+                resident.HopDismountRolled = true;
+                if (urand(1, 100) > _antics.HopDismountChance ||
+                    !LifeMotion::BeginHopDismount(player, resident.Antic, resident.TargetX, resident.TargetY, nowMs))
+                    continue;
+            }
+
+            bool going = player && ValidateResidentAction(player, resident);
+            if (going && resident.Antic.Kind != LifeMotion::Antic::HopDismount)
+            {
+                // A resident mod-playerbots has paused stops, as it starts nothing new either.
+                PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
+                going = ai && ai->AllowActivity();
+            }
+            if (going)
+            {
+                // Within the leash, so the maintenance pass never pulls it back mid-antic.
+                LifeMotion::Bound home;
+                home.HomeX = resident.TargetX;
+                home.HomeY = resident.TargetY;
+                home.HomeRadius = std::min<float>(12.0f, std::max<float>(6.0f, float(_leashRadius) - 5.0f));
+                going = LifeMotion::Advance(player, resident.Antic, nowMs, _antics, home);
+            }
+            if (!going)
+            {
+                LifeMotion::End(player, resident.Antic, nowMs, _antics);
+                // Hand mod-playerbots' "stay" back to the spot; the maintenance pass walks it home.
+                if (player && ValidateResidentAction(player, resident))
+                    SetStayPosition(player, resident);
             }
         }
     }
@@ -2727,6 +2824,12 @@ namespace CityLife
             MaintainPopulation();
             MaintainResidents();
         }
+        _anticTimerMs += diff;
+        if (_anticTimerMs >= 100)
+        {
+            _anticTimerMs = 0;
+            UpdateAntics();
+        }
         ProcessAdmissionGrants(); // Acknowledge five-second grants independently of management ticks.
     }
 
@@ -2746,10 +2849,17 @@ namespace CityLife
             _crowdEnable ? 1 : 0);
         for (Hub const& hub : _hubs)
         {
-            handler->PSendSysMessage("{} [{}] lvl {}-{} cfg={} target={} current={} spots={}",
+            // demand: what the hub asks for now; target: what the last tick allocated it.
+            auto allocated = _hubTargets.find(hub.Id);
+            handler->PSendSysMessage("{} [{}] lvl {}-{} cfg={} demand={} target={} current={} spots={}",
                 hub.Name, TeamName(hub.Team), hub.MinLevel, hub.MaxLevel, hub.ConfiguredPopulation,
-                TargetPopulation(hub), CountResidents(hub.Id), hub.Spots.size());
+                TargetPopulation(hub), allocated == _hubTargets.end() ? 0 : allocated->second,
+                CountResidents(hub.Id), hub.Spots.size());
         }
+        uint32 anticsRunning = uint32(std::count_if(_residents.begin(), _residents.end(),
+            [](Resident const& resident) { return LifeMotion::Running(resident.Antic); }));
+        handler->PSendSysMessage("Antics: enabled={} running={} chance={}%/min cooldown={}s hopDismount={}%",
+            _antics.Enable ? 1 : 0, anticsRunning, _antics.ChancePerMinute, _antics.CooldownSeconds, _antics.HopDismountChance);
         auto snapshot = PlayerbotsLife::GetCooperationSnapshot();
         handler->PSendSysMessage("Admissions pending={} shared waiting={} unacknowledged={} ownership={} work used={}/{}",
             _pendingAdmissions.size(), snapshot.WaitingAdmissions, snapshot.UnacknowledgedGrants,
@@ -2796,6 +2906,7 @@ namespace CityLife
         handler->PSendSysMessage(".citylife compat");
         handler->PSendSysMessage(".citylife reload [config|data|all]");
         handler->PSendSysMessage(".citylife debug status");
+        handler->PSendSysMessage(".citylife debug antic <name> <Dance|Strafe|HopBackForth|HopSideToSide|BunnyHop>");
         handler->PSendSysMessage(".citylife hub list");
         handler->PSendSysMessage(".citylife hub add <name> <alliance|horde|any> <minLevel> <maxLevel> <population> [priority]");
         handler->PSendSysMessage(".citylife hub population <name> <count>");
@@ -2845,6 +2956,22 @@ namespace CityLife
         if (sub == "status")
         {
             PrintDebugStatus(handler);
+            return true;
+        }
+        if (sub == "antic" && args.size() >= 4)
+        {
+            // Plays an antic on a resident right away, to see what it looks like.
+            Player* player = ObjectAccessor::FindPlayerByName(args[2]);
+            Resident* resident = player ? FindResident(player->GetGUID().GetCounter()) : nullptr;
+            LifeMotion::Antic kind = LifeMotion::AnticFromName(args[3]);
+            if (!resident || !ValidateResidentAction(player, *resident))
+                handler->PSendSysMessage("'{}' is not a City Life resident right now.", args[2]);
+            else if (kind == LifeMotion::Antic::None || kind == LifeMotion::Antic::HopDismount)
+                handler->PSendSysMessage("Antics: Dance, Strafe, HopBackForth, HopSideToSide, BunnyHop.");
+            else if (player->IsInCombat() || player->duel || !TryStartAntic(*resident, player, GameTimeMS(), kind))
+                handler->PSendSysMessage("{} is busy.", player->GetName());
+            else
+                handler->PSendSysMessage("{} starts {}.", player->GetName(), LifeMotion::AnticName(kind));
             return true;
         }
 

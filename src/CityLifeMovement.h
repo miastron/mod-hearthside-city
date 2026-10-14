@@ -20,6 +20,8 @@ namespace CityLife
         bool LowestPoiZWithin(Hub const& hub, float x, float y, float radius, float* outMinZ);
         void CheckSinkForensics(Player* bot, float prevZ, bool sinkForensicsEnabled);
         void DismountIfMounted(Player* bot);
+        // Dismounts and drops flight auras and fly movement flags; before teleporting a bot in.
+        void ClearMountAndFlight(Player* bot);
         bool CanMountHere(Player* bot);
         bool TryMount(Player* bot);
         void MoveToPosition(Player* bot, uint32 mapId, float x, float y, float z, float o, bool teleport);

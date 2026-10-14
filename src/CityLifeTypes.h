@@ -9,6 +9,7 @@
 
 #include "Define.h"
 #include "LifeBotReservation.h"
+#include "LifeMotion.h"
 
 #include <string>
 #include <vector>
@@ -219,6 +220,10 @@ namespace CityLife
 
         // Alternating District Roam State
         bool LastRoamWasHub = false;
+
+        // Idle antics (LifeMotion.h, CityLife.Antics.*); HopDismountRolled: this walk's arrival was rolled
+        LifeMotion::Routine Antic;
+        bool HopDismountRolled = false;
 
         // Tokenized Cooperation Lease & State Mutation Journal
         PlayerbotsLife::LeaseToken Token;

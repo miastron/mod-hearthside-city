@@ -49,8 +49,9 @@ CityLife.Population.MaxTotal = 120
 CityLife.Population.DemandMode = "hybrid"
 
 # Hub distribution profile:
-# "scaled" - Proportional scaling: distributes dynamic budget proportionally across all active hubs
-#            based on relative hub importance (avoids ghost towns in smaller capitals/outposts).
+# "scaled" - Every hub gets its full demand (see DemandMode) while the budget covers the total; when
+#            demand exceeds the budget, it is shared out: each hub's Min first (by priority), then
+#            the rest in proportion to demand (avoids ghost towns in smaller capitals/outposts).
 # "legacy" - Sequential allocation: fills hubs in configured order until budget is exhausted.
 CityLife.Population.Distribution = "scaled"
 
@@ -196,6 +197,48 @@ CityLife.Activities.PlazaSocial.Enable = 1
 CityLife.Activities.CrowdScenes.Enable = 1
 CityLife.Activities.MountedTravel.Enable = 1
 CityLife.Activities.AFK.Enable = 1
+
+###################################################################################################
+# Idle Antics (src/LifeMotion.h, shared with mod-hearthside-pvp)
+###################################################################################################
+
+# A resident standing about at a wander or emote spot now and then plays out an antic instead of a
+# plain emote: Dance (/dance), Strafe (quick side-to-side steps, facing fixed), HopBackForth (hops
+# forward and back, either backpedalling or turning round between hops), HopSideToSide (strafe hops)
+# or BunnyHop (hop after hop round a circle, a figure 8 or a zigzag). It stops at once for combat, a
+# duel, a real player taking the bot over, or mod-playerbots pausing it, and walks back to its spot.
+# Test one with .citylife debug antic <name> <antic>.
+CityLife.Antics.Enable = 1
+
+# Percent chance (0-100) that an idle resident starts an antic in any given minute.
+CityLife.Antics.ChancePerMinute = 10
+
+# Seconds a resident waits after one antic before it may start another.
+CityLife.Antics.CooldownSeconds = 120
+
+# How far (yards, 3-20) a hopping antic strays from where it started.
+CityLife.Antics.Radius = 8
+
+# Percent of mounted residents riding in to a spot that hop and dismount in mid-air instead of
+# stopping first (0 = never).
+CityLife.Antics.HopDismount.Chance = 35
+
+# Per antic: relative odds of being picked (0 = never, at most 1000) and how long it lasts, in seconds.
+CityLife.Antics.Dance.Weight = 20
+CityLife.Antics.Dance.MinSeconds = 30
+CityLife.Antics.Dance.MaxSeconds = 60
+CityLife.Antics.Strafe.Weight = 20
+CityLife.Antics.Strafe.MinSeconds = 5
+CityLife.Antics.Strafe.MaxSeconds = 10
+CityLife.Antics.HopBackForth.Weight = 20
+CityLife.Antics.HopBackForth.MinSeconds = 5
+CityLife.Antics.HopBackForth.MaxSeconds = 10
+CityLife.Antics.HopSideToSide.Weight = 20
+CityLife.Antics.HopSideToSide.MinSeconds = 5
+CityLife.Antics.HopSideToSide.MaxSeconds = 10
+CityLife.Antics.BunnyHop.Weight = 20
+CityLife.Antics.BunnyHop.MinSeconds = 15
+CityLife.Antics.BunnyHop.MaxSeconds = 30
 
 ###################################################################################################
 # Living Crowd Scenes (Capital Bank & Auction House Squares)

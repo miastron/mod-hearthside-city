@@ -132,6 +132,10 @@ namespace CityLife
         void MaintainPopulation();
         void MaintainResidents();
         void RelocateResident(Resident& resident, Hub const& hub);
+        // Advances running antics and starts mid-air dismounts; every ~100 ms from Update.
+        void UpdateAntics();
+        // Starts `kind` on an idle resident; with None, rolls CityLife.Antics.ChancePerMinute and picks one.
+        bool TryStartAntic(Resident& resident, Player* player, uint32 nowMs, LifeMotion::Antic kind = LifeMotion::Antic::None);
         void SnapTargetToGround(Player* player, Resident& resident, Hub const& hub, Spot const& spot) const;
 
         void ApplyCityStrategies(Player* player, Resident& resident) const;
@@ -228,6 +232,10 @@ namespace CityLife
 
         // Duel spectators
         float _spectatorWatchRadius = 40.0f;
+
+        // Idle antics
+        LifeMotion::AnticConfig _antics;
+        uint32 _anticTimerMs = 0;
 
         // Movement & Sink Settings
         uint32 _mountBetweenPoiChance = 90;
