@@ -222,7 +222,7 @@ CityLife.Activities.MountedTravel.Enable = 1
 CityLife.Activities.AFK.Enable = 1
 
 ###################################################################################################
-# Idle Antics (src/LifeMotion.h, shared with mod-hearthside-pvp)
+# Idle Antics (mod-hearthside-life's src/LifeMotion.h, shared with mod-hearthside-pvp)
 ###################################################################################################
 
 # A resident standing about at a wander, emote or duel-spectator spot now and then plays out an antic
@@ -260,7 +260,7 @@ CityLife.Antics.BunnyHop.MinSeconds = 15
 CityLife.Antics.BunnyHop.MaxSeconds = 30
 
 ###################################################################################################
-# Duel Medics (src/LifeMedic.h, shared with mod-hearthside-pvp)
+# Duel Medics (mod-hearthside-life's src/LifeMedic.h, shared with mod-hearthside-pvp)
 ###################################################################################################
 
 # A healer resident (Holy/Discipline priest, Holy paladin, Restoration shaman or druid) standing at its
@@ -276,7 +276,7 @@ CityLife.DuelMedics.MaxPerDuel = 1
 CityLife.DuelMedics.Radius = 30
 
 ###################################################################################################
-# Hops on the Way (src/LifeMotion.h)
+# Hops on the Way (mod-hearthside-life's src/LifeMotion.h)
 ###################################################################################################
 
 # Any random bot running somewhere (travelling, questing, a resident walking to its spot) within Radius

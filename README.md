@@ -7,7 +7,7 @@ Created by **iCore**. Incorporates 100% of capabilities and micro-behaviors from
 
 City Life populates capitals, towns, and popular social hubs with configurable AzerothCore Playerbots. It makes cities feel lively, bustling, and immersive: residents wander between districts, shop at market stalls, socialize in taverns, fish along city waterways, and gather to cheer the duels outside the capital gates.
 
-**Single Installed Module Requirement:** Users install only `mod-playerbots-city-life` alongside AzerothCore and `mod-playerbots`. `mod-city-bots` is completely unnecessary and should not be installed or enabled.
+**Requires `mod-hearthside-life`:** install it beside this module. It holds the code and state City Life shares with PvP Life and Artisans (reservations, motion, bot identity, presence, arrivals, medics, audit). `mod-city-bots` is completely unnecessary and should not be installed or enabled.
 
 ---
 
@@ -43,9 +43,10 @@ City Life populates capitals, towns, and popular social hubs with configurable A
 
 ## Installation & Setup
 
-1. Place `mod-hearthside-city` into your `modules/` directory:
+1. Place `mod-hearthside-city` and `mod-hearthside-life` into your `modules/` directory:
    ```text
    azerothcore-wotlk/modules/mod-hearthside-city
+   azerothcore-wotlk/modules/mod-hearthside-life
    ```
 2. Nothing to apply by hand: AzerothCore's updater applies `data/sql/db-world/base/city_life.sql`
    to the **WORLD** database on the next worldserver start (`Updates.EnableDatabases` must include
@@ -62,8 +63,8 @@ City Life populates capitals, towns, and popular social hubs with configurable A
 - **Zero Feature Suppression:** Neither module disables or yields any feature for the other.
 - **Duels belong to PvP Life:** PvP Life's StormwindDuel, OrgrimmarDuel and GoldshireDuel zones run the duels; City Life's StormwindGate, OrgrimmarGate and GoldshireDuel hubs only hold spectators. Without PvP Life the spectators simply wait at their stands.
 - **Candidate Scanning Isolation:** During candidate scanning, each module verifies `!PlayerbotsLife::IsReserved(guid)` before borrowing a bot.
-- **Shared Reservation Registry:** `src/LifeBotReservation.h` provides an atomic, mutex-guarded process-wide singleton that registers active modules and tracks ownership cleanly.
-- **Independent Execution:** If only one module is installed, it runs completely standalone with zero dependencies or overhead.
+- **Shared Reservation Registry:** `mod-hearthside-life`'s `src/LifeBotReservation.h` provides an atomic, mutex-guarded process-wide singleton that registers active modules and tracks ownership cleanly.
+- **Independent Execution:** City Life and PvP Life each need only `mod-hearthside-life`, not each other.
 
 ---
 

@@ -11,8 +11,8 @@
 #include "CityLifePopulation.h"
 #include "Item.h"
 #include "StringFormat.h"
-#include "LifeBotReservation.h"
-#include "LifeArrival.h"
+#include "../../mod-hearthside-life/src/LifeBotReservation.h"
+#include "../../mod-hearthside-life/src/LifeArrival.h"
 
 #include "AreaDefines.h"
 #include "Battlefield.h"

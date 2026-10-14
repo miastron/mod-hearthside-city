@@ -8,10 +8,10 @@
 #define CITY_LIFE_MGR_H
 
 #include "CityLifeTypes.h"
-#include "LifeMedic.h"
-#include "LifeBots.h"
-#include "LifePresence.h"
-#include "LifeAudit.h"
+#include "../../mod-hearthside-life/src/LifeMedic.h"
+#include "../../mod-hearthside-life/src/LifeBots.h"
+#include "../../mod-hearthside-life/src/LifePresence.h"
+#include "../../mod-hearthside-life/src/LifeAudit.h"
 #include "AsyncCallbackProcessor.h"
 #include "QueryCallback.h"
 #include "Transaction.h"

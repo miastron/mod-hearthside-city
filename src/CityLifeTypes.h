@@ -8,9 +8,14 @@
 #define CITY_LIFE_TYPES_H
 
 #include "Define.h"
-#include "LifeBotReservation.h"
-#include "LifeMotion.h"
-#include "LifeBots.h"
+// The shared Life headers and their one registry are mod-hearthside-life's.
+#if __has_include("../../mod-hearthside-life/src/LifeBotReservation.h")
+#include "../../mod-hearthside-life/src/LifeBotReservation.h"
+#else
+#error "mod-hearthside-city requires mod-hearthside-life beside it in modules/"
+#endif
+#include "../../mod-hearthside-life/src/LifeMotion.h"
+#include "../../mod-hearthside-life/src/LifeBots.h"
 
 #include <string>
 #include <vector>

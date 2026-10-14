@@ -5,7 +5,7 @@
  */
 
 #include "CityLifeMgr.h"
-#include "LifeBotReservation.h"
+#include "../../mod-hearthside-life/src/LifeBotReservation.h"
 
 #include "Chat.h"
 #include "CommandScript.h"
@@ -194,11 +194,11 @@ public:
 
 void AddCityLifeScripts()
 {
-    // A static_assert here could only compare this module's copy of LifeBotReservation.h with
-    // itself; CheckProtocolVersion compares it with the copy the first registered Life module used.
+    // A sanity check: every Life module compiles mod-hearthside-life's one LifeBotReservation.h, so
+    // this only fails if a module was built against an older copy.
     if (!PlayerbotsLife::CheckProtocolVersion())
         LOG_ERROR("server.loading", ">> City Life: LifeBotReservation.h protocol {} does not match {} from another Life "
-            "module. Copy one LifeBotReservation.h into every Life module and rebuild.",
+            "module. Rebuild every Life module against mod-hearthside-life.",
             PlayerbotsLife::LIFE_BOT_RESERVATION_PROTOCOL_VERSION, PlayerbotsLife::GetRegisteredProtocolVersion());
 
     // The active-module flag is set by Manager::LoadConfig, only while City Life is enabled and its tables exist.

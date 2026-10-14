@@ -86,31 +86,37 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   strategies/position are restored before the lease is dropped. Every resident action should
   re-validate its lease (`ValidateActiveLease` / `ValidateResidentAction`); a lost lease means
   another module or a real player now owns the bot.
-- **`LifeBotReservation.h`**: header-only, process-wide registry (owners, leases with generations,
+- **The shared Life headers are `../mod-hearthside-life`'s** (moved there 2026-10-14). This module
+  includes them as `../../mod-hearthside-life/src/<header>` and `#error`s without that module
+  (`CityLifeTypes.h`). Change them in the Life repo and build City and PvP. The one exception here is
+  `src/LifeBotReservation.h`: a one-line forwarding header kept only because upstream
+  `mod-playerbots-artisans` includes `../../mod-hearthside-city/src/LifeBotReservation.h`. Never put
+  code in it.
+- **Upstream ports:** upstream `mod-playerbots-city-life` commits that touch `LifeBotReservation.h`
+  or the other `Life*.h` headers land in `../mod-hearthside-life`, not here.
+- **`LifeBotReservation.h`** (Life): process-wide registry (owners, leases with generations,
   admission arbitration, duel staging slots on a 20yd lattice, real-player challenge cooldowns --
-  the last two used only by `mod-hearthside-pvp` now) shared with `mod-hearthside-pvp`/artisans. Because both modules compile into one binary, the
-  copies must stay **byte-compatible**; `AddCityLifeScripts()` calls `CheckProtocolVersion()`, which
-  logs an error when another Life module registered a different `LIFE_BOT_RESERVATION_PROTOCOL_VERSION`.
-  Change it in both repos together and bump the version.
-- **`LifeMotion.h`**: header-only, owned here and included by `mod-hearthside-pvp` straight from
-  this repo (`../../mod-hearthside-city/src/LifeMotion.h`), so a change here changes both modules.
+  the last two used only by `mod-hearthside-pvp` now) shared with `mod-hearthside-pvp`/artisans. Its
+  state is defined once in Life's `LifeRegistry.cpp`. `AddCityLifeScripts()` still calls
+  `CheckProtocolVersion()`, now only a startup sanity check against a module built from an old copy.
+- **`LifeMotion.h`** (Life):
   `Launch` is one validated move (jump or curve, facing a unit, a held angle or the way it goes)
   that mod-playerbots is told to wait out; PvP's duel footwork is built on it. `Routine` plays the
   idle antics (Dance, HopBackForth, HopSideToSide, BunnyHop, and HopDismount for mounted
   arrivals), started at wander, random-emote and duel-spectator spots: `Manager::UpdateAntics` advances them every ~100 ms, `MaintainResidents` leaves a
   resident mid-antic alone, `CityLife.Antics.*` configures them, `.citylife debug antic` forces one.
-- **Shared Life headers** (owned here, included by PvP from this repo, like `LifeMotion.h`):
+- **The other shared Life headers**, used by City and PvP alike:
   `LifeBots.h` (bot-account filter behind `IsBotSession`/`IsHumanPlayer`/`IsHumanControlled`,
   archetype filter, budget math, live-bot census, the `StrategyJournal` behind `Resident::Journal`,
   and `HoldLevels`, the level freeze behind `KeepResidentLevelsFixed`: one registry for both
-  modules), `LifePresence.h` (real-player snapshot and the wake rule), `LifeArrival.h`
+  modules, defined in Life's `LifeRegistry.cpp`), `LifePresence.h` (real-player snapshot and the wake rule), `LifeArrival.h`
   (`FindDropOff`, `InSight`, `WalkOff`: arrivals and departures where a player could see them) and
   `LifeAudit.h` (the async audit writer; `sCityLifeAudit` writes `Logs/citylife_audit.log`). A
-  change here changes both modules: build both.
+  change to any of them changes both modules: build both.
 - **`LifeMotion::HopOnTheWay`** also drives `Manager::UpdateTravelHops` (every 250 ms): any random
   bot on a point move within `CityLife.TravelHops.Radius` of a real player jumps 1-5 times every
   15-45 s. It is world-wide, not limited to residents, and never touches a player's own alt bot.
-- **`LifeMedic.h`**: header-only, owned here and included by PvP the same way. Healer bots fixed by
+- **`LifeMedic.h`** (Life): Healer bots fixed by
   GUID as "medics" heal the duelists of a duel that just ended in front of them
   (`PlayerScript::OnPlayerDuelEnd` → `QueueDuelEnd` → `UpdateDuelMedics`, `CityLife.DuelMedics.*`).
 - **Duels are `mod-hearthside-pvp`'s.** City Life's duel engine and the upstream addon telemetry
