@@ -1565,7 +1565,7 @@ namespace CityLife
         return nullptr;
     }
 
-    void Manager::BeginCrowdChat(Player* bot, Player* partner, Resident& resident, uint32 now)
+    void Manager::BeginCrowdChat(Player* bot, Player* partner, Resident& resident, uint32 now, Player* witness)
     {
         if (!bot || !partner)
             return;
@@ -1584,25 +1584,27 @@ namespace CityLife
         if (!partnerResident)
             return;
 
-        // Determine dialogue pool
-        CityPoiType pool = CityPoiType::Plaza;
-        if (Spot const* spot = FindSpot(resident.HubId, resident.SpotId))
+        // City's own lines only with CityLife.Chat.ScriptedConversations; otherwise the pair just
+        // stands together and whoever listens to CrowdPair may give them a conversation.
+        int16 dialogueId = -1;
+        if (_chatScriptedConversations)
         {
-            if (spot->PoiType == CityPoiType::Bank || spot->PoiType == CityPoiType::AuctionHouse)
-                pool = spot->PoiType;
+            CityPoiType pool = CityPoiType::Plaza;
+            if (Spot const* spot = FindSpot(resident.HubId, resident.SpotId))
+            {
+                if (spot->PoiType == CityPoiType::Bank || spot->PoiType == CityPoiType::AuctionHouse)
+                    pool = spot->PoiType;
+            }
+
+            std::vector<int16> candidates;
+            for (int16 i = 0; i < Dialogues::kCrowdDialogueCount; ++i)
+            {
+                if (Dialogues::kCrowdDialogues[i].Pool == pool || Dialogues::kCrowdDialogues[i].Pool == CityPoiType::Plaza)
+                    candidates.push_back(i);
+            }
+            if (!candidates.empty())
+                dialogueId = candidates[urand(0, static_cast<uint32>(candidates.size() - 1))];
         }
-
-        std::vector<int16> candidates;
-        for (int16 i = 0; i < Dialogues::kCrowdDialogueCount; ++i)
-        {
-            if (Dialogues::kCrowdDialogues[i].Pool == pool || Dialogues::kCrowdDialogues[i].Pool == CityPoiType::Plaza)
-                candidates.push_back(i);
-        }
-
-        if (candidates.empty())
-            return;
-
-        int16 dialogueId = candidates[urand(0, static_cast<uint32>(candidates.size() - 1))];
 
         resident.ChatDialogueId = dialogueId;
         resident.ChatPartnerGuid = partnerGuidLow;
@@ -1616,6 +1618,23 @@ namespace CityLife
 
         bot->SetFacingToObject(partner);
         partner->SetFacingToObject(bot);
+
+        LifeEvents::Event event;
+        event.Type = LifeEvents::Kind::CrowdPair;
+        event.From = PlayerbotsLife::ReservationOwner::CityLife;
+        event.Actor = bot->GetGUID().GetRawValue();
+        event.Other = partner->GetGUID().GetRawValue();
+        event.MapId = bot->GetMapId();
+        event.X = bot->GetPositionX();
+        event.Y = bot->GetPositionY();
+        event.Z = bot->GetPositionZ();
+        event.Witness = witness ? witness->GetGUID().GetRawValue() : 0;
+        if (Hub const* hub = FindHub(resident.HubId))
+            event.Detail = hub->Name;
+        LifeEvents::Publish(event);
+        if (_debug)
+            LOG_INFO("module", "[CityLife] Crowd pair {} and {} near {}.", bot->GetName(), partner->GetName(),
+                witness ? witness->GetName() : std::string("nobody"));
     }
 
     void Manager::ClearResidentChatPartner(uint32 partnerGuidLow, uint32 expectedGuidLow)

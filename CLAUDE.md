@@ -131,6 +131,11 @@ Most local diffs from upstream are adaptations to these. Use the local forms:
   using `../mod-hearthside-chat`'s GUID-fixed personality, asked through Life's `LifeArchetypes`
   (Chat registers the provider). City never includes Chat's headers. Without a provider (Chat not
   installed, or `HearthsideChat.Enable`/`HearthsideChat.Life.Enable` off) every bot fits.
+- **Crowd pairs**: a crowd resident lingering near a real player now and then pairs with another
+  (`FindCrowdChatPartner` → `BeginCrowdChat`): they face each other and hold the pair until its
+  45 s deadline. Pairing no longer depends on `CityLife.Chat.ScriptedConversations` (that key only
+  adds City's own lines). Each pair publishes `LifeEvents::CrowdPair` with the real player as
+  witness; Chat offers the pair a /say script.
 - **Busy marks**: Chat marks the bots it casts in a /say scene (`LifeActivity`). `Manager::Talking`
   is checked in `MaintainResidents` (no relocation, leash, activity change or antic), the
   population shrink, a residence's expiry, crowd-partner picking and medics: a busy resident waits.

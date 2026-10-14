@@ -67,7 +67,9 @@ namespace CityLife
         Spot const* FindSpot(uint32 hubId, uint32 spotId) const;
         Spot const* FindInnBedSpot(Hub const& hub) const;
         Player* FindCrowdChatPartner(uint32 hubId, Player* bot);
-        void BeginCrowdChat(Player* bot, Player* partner, Resident& resident, uint32 now);
+        // Pairs two crowd residents near `witness` (a real player): they face each other and hold the
+        // pair for a while, and LifeEvents::CrowdPair tells whoever listens (mod-hearthside-chat).
+        void BeginCrowdChat(Player* bot, Player* partner, Resident& resident, uint32 now, Player* witness);
         void ClearResidentChatPartner(uint32 partnerGuidLow, uint32 expectedGuidLow);
         Resident* FindResident(uint32 guidLow);
         Resident const* FindResident(uint32 guidLow) const;

@@ -196,15 +196,10 @@ namespace CityLife
                     break;
             }
 
-            // Dialogue delivery & initiator state
-            if (!enableSay)
+            // Pairing (always) and City's own lines (only with CityLife.Chat.ScriptedConversations).
+            // The stale-claim release above ends a pair at its deadline.
             {
-                if (resident.ChatPartnerGuid != 0)
-                    CrowdReleaseChat(bot, resident);
-            }
-            else
-            {
-                if (resident.ChatInitiator && resident.ChatDialogueId >= 0 &&
+                if (resident.ChatInitiator && enableSay && resident.ChatDialogueId >= 0 &&
                     resident.ChatDialogueId < Dialogues::kCrowdDialogueCount)
                 {
                     if (MsReached(now, resident.ChatDeadlineMs))
@@ -247,7 +242,7 @@ namespace CityLife
                     Player* partner = sCityLifeMgr.FindCrowdChatPartner(resident.HubId, bot);
                     if (partner)
                     {
-                        sCityLifeMgr.BeginCrowdChat(bot, partner, resident, now);
+                        sCityLifeMgr.BeginCrowdChat(bot, partner, resident, now, realPlayer);
                     }
                 }
             }
