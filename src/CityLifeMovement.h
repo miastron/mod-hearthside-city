@@ -18,7 +18,7 @@ namespace CityLife
     namespace Movement
     {
         bool LowestPoiZWithin(Hub const& hub, float x, float y, float radius, float* outMinZ);
-        void CheckSinkForensics(Player* bot, float prevZ, bool sinkForensicsEnabled);
+        void CheckSinkForensics(Player* bot, float prevX, float prevY, float prevZ, bool sinkForensicsEnabled);
         void DismountIfMounted(Player* bot);
         // Dismounts and drops flight auras and fly movement flags; before teleporting a bot in.
         void ClearMountAndFlight(Player* bot);

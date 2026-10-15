@@ -187,6 +187,9 @@ namespace CityLife
         bool DancingSetByModule = false;
 
         // Navigation, Mounting & Sink Forensics
+        // Position at the last sweep; LastSweepZ 0 means no baseline (admission, after a teleport).
+        float LastSweepX = 0.0f;
+        float LastSweepY = 0.0f;
         float LastSweepZ = 0.0f;
         uint32 LeashGraceUntil = 0; // game seconds: no leash teleport while a walk to a new spot is under way
 

@@ -1776,7 +1776,8 @@ namespace CityLife
         resident.NextEmoteAtMs = GameTimeMS() + urand(_emoteMinSeconds, _emoteMaxSeconds) * 1000;
         resident.NextReservationRefreshAt = now + ReservationRefreshSeconds;
         resident.ReleaseAt = hub.ResidenceSeconds == 0 ? 0 : now + hub.ResidenceSeconds;
-        resident.LastSweepZ = resident.TargetZ;
+        // No baseline yet: the bot walks in, lands at a drop-off or is teleported, none of them at TargetZ.
+        resident.LastSweepZ = 0.0f;
         ApplyCityStrategies(player, resident);
         SetStayPosition(player, resident);
         if (sRandomPlayerbotMgr.IsRandomBot(player))
@@ -2271,7 +2272,10 @@ namespace CityLife
             if (Talking(player))
                 continue;
             // Sink Forensics Check
-            Movement::CheckSinkForensics(player, resident.LastSweepZ, _sinkForensics);
+            Movement::CheckSinkForensics(player, resident.LastSweepX, resident.LastSweepY, resident.LastSweepZ,
+                _sinkForensics);
+            resident.LastSweepX = player->GetPositionX();
+            resident.LastSweepY = player->GetPositionY();
             resident.LastSweepZ = player->GetPositionZ();
 
             // Multi-level floor protection: if way below lowest POI, recover
@@ -2281,6 +2285,7 @@ namespace CityLife
                 if (player->GetPositionZ() < lowestZ - 15.0f && !player->IsBeingTeleported())
                 {
                     Movement::MoveToPosition(player, hub->MapId, resident.TargetX, resident.TargetY, resident.TargetZ, resident.TargetO, true);
+                    resident.LastSweepZ = 0.0f;
                     continue;
                 }
             }
@@ -2312,6 +2317,7 @@ namespace CityLife
                 ApplyCityStrategies(player, resident);
                 SetStayPosition(player, resident);
                 Movement::MoveToPosition(player, hub->MapId, resident.TargetX, resident.TargetY, resident.TargetZ, resident.TargetO, true);
+                resident.LastSweepZ = 0.0f;
                 continue;
             }
 

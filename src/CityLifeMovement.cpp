@@ -55,7 +55,7 @@ namespace CityLife
             return false;
         }
 
-        void CheckSinkForensics(Player* bot, float prevZ, bool sinkForensicsEnabled)
+        void CheckSinkForensics(Player* bot, float prevX, float prevY, float prevZ, bool sinkForensicsEnabled)
         {
             if (!sinkForensicsEnabled || !bot || !bot->IsInWorld() || prevZ == 0.0f)
                 return;
@@ -68,16 +68,20 @@ namespace CityLife
 
             if (drop > 8.0f)
             {
-                if (bot->IsInWater() || drop > 20.0f)
+                // A fall through a floor lands almost straight below; a drop that also covered more
+                // ground than it lost height is travel (a ramp, stairs, a teleport by another module).
+                float const moved2d = bot->GetDistance2d(prevX, prevY);
+                if (moved2d < drop && (bot->IsInWater() || drop > 20.0f))
                 {
-                    LOG_WARN("module", "[CityLife] SINK WARNING: Bot '{}' (GUID {}) dropped {:.1f}y (Z {:.1f} -> {:.1f}) at ({:.1f}, {:.1f}) | moving={} inWater={}",
+                    LOG_WARN("module", "[CityLife] SINK WARNING: Bot '{}' (GUID {}) dropped {:.1f}y (Z {:.1f} -> {:.1f}) at ({:.1f}, {:.1f}) from ({:.1f}, {:.1f}) | moving={} inWater={}",
                         bot->GetName(), bot->GetGUID().GetCounter(), drop, prevZ, currentZ,
-                        bot->GetPositionX(), bot->GetPositionY(), bot->isMoving() ? 1 : 0, bot->IsInWater() ? 1 : 0);
+                        bot->GetPositionX(), bot->GetPositionY(), prevX, prevY,
+                        bot->isMoving() ? 1 : 0, bot->IsInWater() ? 1 : 0);
                 }
                 else
                 {
-                    LOG_DEBUG("module", "[CityLife] SINK INFO: Bot '{}' (GUID {}) descended {:.1f}y (Z {:.1f} -> {:.1f}) at ({:.1f}, {:.1f})",
-                        bot->GetName(), bot->GetGUID().GetCounter(), drop, prevZ, currentZ,
+                    LOG_DEBUG("module", "[CityLife] SINK INFO: Bot '{}' (GUID {}) descended {:.1f}y over {:.1f}y (Z {:.1f} -> {:.1f}) at ({:.1f}, {:.1f})",
+                        bot->GetName(), bot->GetGUID().GetCounter(), drop, moved2d, prevZ, currentZ,
                         bot->GetPositionX(), bot->GetPositionY());
                 }
             }
