@@ -27,6 +27,14 @@ claim you could not exercise as unverified.
   `mod_playerbots_city_life.conf`, `.citylife`, the `>> Loaded` line, `module-info.json`):
   operators' configs depend on them. Don't finish the rename unless asked.
 
+## Upstream baseline
+
+The core and mod-playerbots commits each Hearthside module was last verified against live in one
+table in `../mod-hearthside-life/CLAUDE.md` ("Upstream baseline"), with
+`../mod-hearthside-life/tools/Get-UpstreamDrift.ps1` to list what changed since. Bump this module's
+row there only after checking this module, and commit that change in Life right away (its own commit;
+pushing is optional) even if nothing else in Life changed: its history is the baseline record.
+
 ## Core API drift
 
 Use the local forms, not upstream's:
