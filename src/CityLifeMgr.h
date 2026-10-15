@@ -170,6 +170,9 @@ namespace CityLife
         // Any random bot running somewhere within CityLife.TravelHops.Radius of a real player now and
         // then jumps a few times on the way (LifeMotion::HopOnTheWay). Every ~250 ms from Update.
         void UpdateTravelHops();
+        // Duel spectators taking the step back their last activity pass planned, each at its own
+        // moment (Activities::StepBackSpectator). Every ~250 ms from Update.
+        void UpdateSpectatorSteps();
         // Starts `kind` on an idle resident; with None, rolls CityLife.Antics.ChancePerMinute and picks one.
         bool TryStartAntic(Resident& resident, Player* player, uint32 nowMs, LifeMotion::Antic kind = LifeMotion::Antic::None);
         void SnapTargetToGround(Player* player, Resident& resident, Hub const& hub, Spot const& spot) const;

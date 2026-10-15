@@ -26,6 +26,10 @@ namespace CityLife
         // and cheers it on; with no duel running the spectator just waits at its stand.
         void ExecuteDuelSpectator(Resident& resident, Player* bot, Hub const& hub, uint32 now, float watchRadius);
 
+        // The step back out of a fight ExecuteDuelSpectator planned, once its own moment comes
+        // (Resident::SpectatorStepAtMs; Manager::UpdateSpectatorSteps).
+        void StepBackSpectator(Resident& resident, Player* bot, Hub const& hub);
+
         void ExecuteFishing(Resident& resident, Player* bot, Hub const& hub, uint32 now);
 
         void ExecuteInnDance(Resident& resident, Player* bot, Hub const& hub, uint32 now);

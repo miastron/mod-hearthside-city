@@ -212,6 +212,13 @@ namespace CityLife
         // (game ms; 0 = no walk pending).
         uint32 ArrivalWalkAtMs = 0;
 
+        // Duel spectator a fight came too close to: the step back it planned, taken at its own moment
+        // rather than on the management tick with every other spectator (game ms; 0 = none).
+        uint32 SpectatorStepAtMs = 0;
+        float SpectatorStepX = 0.0f;
+        float SpectatorStepY = 0.0f;
+        float SpectatorStepZ = 0.0f;
+
         // Tokenized Cooperation Lease & State Mutation Journal (LifeBots.h)
         PlayerbotsLife::LeaseToken Token;
         LifeBots::StrategyJournal Journal;

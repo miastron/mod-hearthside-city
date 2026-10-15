@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace CityLife
 {
@@ -300,6 +301,62 @@ namespace CityLife
             }
         }
 
+        // A few steps away from the fight at the bot's elbow, to somewhere clear of every duel in
+        // `fights`: mostly away from it, now and then sideways. False when nowhere nearby is better.
+        static bool PickSpectatorStand(Player* bot, Hub const& hub, std::vector<Position> const& fights, float away,
+            float& outX, float& outY, float& outZ)
+        {
+            // Past MinWatchDistance with room to spare, so a fight drifting a yard does not send it off again.
+            constexpr float ClearDistance = 11.0f;
+            auto clearance = [&fights](float x, float y)
+            {
+                float nearest = 1000.0f;
+                for (Position const& fight : fights)
+                    nearest = std::min(nearest, std::hypot(x - fight.GetPositionX(), y - fight.GetPositionY()));
+                return nearest;
+            };
+            float best = clearance(bot->GetPositionX(), bot->GetPositionY()) + 3.0f;
+            bool found = false;
+            for (int attempt = 0; attempt < 12; ++attempt)
+            {
+                float angle = attempt < 8 ? away + frand(-1.4f, 1.4f) : frand(0.0f, 6.28318531f);
+                float step = frand(4.0f, 10.0f);
+                float x = bot->GetPositionX() + std::cos(angle) * step;
+                float y = bot->GetPositionY() + std::sin(angle) * step;
+                float score = clearance(x, y);
+                if (score <= best)
+                    continue;
+                float z = bot->GetPositionZ();
+                bot->UpdateAllowedPositionZ(x, y, z);
+                if (!Movement::ValidateCityDestination(bot, hub.MapId, x, y, z, 0.0f))
+                    continue;
+                outX = x;
+                outY = y;
+                outZ = z;
+                found = true;
+                if (score >= ClearDistance)
+                    break;
+                best = score;
+            }
+            return found;
+        }
+
+        void StepBackSpectator(Resident& resident, Player* bot, Hub const& hub)
+        {
+            float x = resident.SpectatorStepX, y = resident.SpectatorStepY, z = resident.SpectatorStepZ;
+            resident.SpectatorStepAtMs = 0;
+            if (!bot || !bot->IsInWorld() || bot->isMoving() || !resident.AtSpot || bot->duel || bot->IsInCombat() ||
+                LifeMotion::Running(resident.Antic) || !sCityLifeMgr.ValidateResidentAction(bot, resident))
+                return;
+            resident.TargetX = x;
+            resident.TargetY = y;
+            resident.TargetZ = z;
+            resident.AtSpot = false;
+            resident.LeashGraceUntil = GameTimeSeconds() + 15;
+            sCityLifeMgr.SetStayPosition(bot, resident);
+            Movement::MoveToPosition(bot, hub.MapId, x, y, z, 0.0f, false);
+        }
+
         void ExecuteDuelSpectator(Resident& resident, Player* bot, Hub const& hub, uint32 now, float watchRadius)
         {
             if (!bot || !bot->IsInWorld() || bot->isMoving() || !resident.AtSpot)
@@ -320,11 +377,15 @@ namespace CityLife
 
             Player* duelist = nullptr;
             float bestDist = watchRadius;
+            std::vector<Position> fights; // the middle of every duel in sight
             for (Player* player : players)
             {
                 if (!player || player == bot || !player->duel || !player->duel->Opponent ||
                     player->duel->State != DUEL_STATE_IN_PROGRESS)
                     continue;
+                Player* opponent = player->duel->Opponent;
+                fights.emplace_back((player->GetPositionX() + opponent->GetPositionX()) * 0.5f,
+                    (player->GetPositionY() + opponent->GetPositionY()) * 0.5f, bot->GetPositionZ());
                 float dist = bot->GetDistance(player);
                 if (dist < bestDist)
                 {
@@ -335,6 +396,7 @@ namespace CityLife
 
             if (!duelist)
             {
+                resident.SpectatorStepAtMs = 0;
                 // Nothing to watch: wait at the stand, now and then chatting with a neighbour.
                 if (MsReached(now, resident.NextEmoteAtMs))
                 {
@@ -348,30 +410,33 @@ namespace CityLife
             Player* opponent = duelist->duel->Opponent;
             float const midX = (duelist->GetPositionX() + opponent->GetPositionX()) * 0.5f;
             float const midY = (duelist->GetPositionY() + opponent->GetPositionY()) * 0.5f;
-            float const toBotX = bot->GetPositionX() - midX;
-            float const toBotY = bot->GetPositionY() - midY;
+            // The fight nearest the bot, which need not be the one with the nearest duelist in it.
+            Position const* closest = &fights.front();
+            for (Position const& fight : fights)
+                if (bot->GetExactDist2d(fight) < bot->GetExactDist2d(*closest))
+                    closest = &fight;
+            float const toBotX = bot->GetPositionX() - closest->GetPositionX();
+            float const toBotY = bot->GetPositionY() - closest->GetPositionY();
             float const distToFight = std::sqrt(toBotX * toBotX + toBotY * toBotY);
 
-            // Standing in the fight: back off to a ring around it and make that the new stand.
+            // Standing in a fight: step back out of it and make that the new stand. Out of every fight,
+            // not just this one: on a ground with pairs 20 yards apart, a fixed ring around one duel
+            // lands in the next, and the spectator shuttles between the two (realm 2026-10-15).
             constexpr float MinWatchDistance = 8.0f;
-            constexpr float WatchDistance = 12.0f;
-            if (distToFight < MinWatchDistance)
+            if (distToFight >= MinWatchDistance)
+                resident.SpectatorStepAtMs = 0;
+            else if (!resident.SpectatorStepAtMs)
             {
-                float const angle = distToFight > 0.5f ? std::atan2(toBotY, toBotX) : frand(0.0f, 6.28318531f);
-                float x = midX + std::cos(angle) * WatchDistance;
-                float y = midY + std::sin(angle) * WatchDistance;
-                float z = bot->GetPositionZ();
-                bot->UpdateAllowedPositionZ(x, y, z);
-                if (Movement::ValidateCityDestination(bot, hub.MapId, x, y, z, 0.0f))
+                float const away = distToFight > 0.5f ? std::atan2(toBotY, toBotX) : frand(0.0f, 6.28318531f);
+                float x, y, z;
+                if (PickSpectatorStand(bot, hub, fights, away, x, y, z))
                 {
-                    resident.TargetX = x;
-                    resident.TargetY = y;
-                    resident.TargetZ = z;
-                    resident.AtSpot = false;
-                    resident.LeashGraceUntil = GameTimeSeconds() + 15;
-                    sCityLifeMgr.SetStayPosition(bot, resident);
-                    Movement::MoveToPosition(bot, hub.MapId, x, y, z, 0.0f, false);
-                    return;
+                    // This runs on the management tick, the same moment for every spectator; each
+                    // one notices on its own clock instead (Manager::UpdateSpectatorSteps).
+                    resident.SpectatorStepX = x;
+                    resident.SpectatorStepY = y;
+                    resident.SpectatorStepZ = z;
+                    resident.SpectatorStepAtMs = std::max<uint32>(now + urand(300, 7000), 1);
                 }
             }
 

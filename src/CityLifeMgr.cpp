@@ -2598,6 +2598,25 @@ namespace CityLife
         }
     }
 
+    void Manager::UpdateSpectatorSteps()
+    {
+        uint32 nowMs = GameTimeMS();
+        for (Resident& resident : _residents)
+        {
+            if (!resident.SpectatorStepAtMs || !LifeMotion::Reached(nowMs, resident.SpectatorStepAtMs))
+                continue;
+            Hub const* hub = FindHub(resident.HubId);
+            Player* player = FindPlayer(resident.Bot.GuidLow);
+            if (!hub || !player || player->IsBeingTeleported() || !PlayerbotsLife::ValidateActiveLease(resident.Token) ||
+                !IsResidentUsable(player) || Talking(player))
+            {
+                resident.SpectatorStepAtMs = 0;
+                continue;
+            }
+            Activities::StepBackSpectator(resident, player, *hub);
+        }
+    }
+
     void Manager::UpdateTravelHops()
     {
         if (!_travelHops)
@@ -2818,6 +2837,7 @@ namespace CityLife
             _travelHopTimerMs = 0;
             ProcessArrivals();
             UpdateTravelHops();
+            UpdateSpectatorSteps();
         }
         ProcessAdmissionGrants(); // Acknowledge five-second grants independently of management ticks.
     }
