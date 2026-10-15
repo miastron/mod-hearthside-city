@@ -85,14 +85,8 @@ namespace CityLife
 
         void DismountIfMounted(Player* bot)
         {
-            if (!bot)
-                return;
-
-            if (bot->HasMountedAura() || bot->IsMounted())
-            {
-                bot->Dismount();
-                bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
-            }
+            if (bot)
+                LifeMotion::Dismount(bot);
         }
 
         void ClearMountAndFlight(Player* bot)
@@ -133,33 +127,8 @@ namespace CityLife
             if (!CanMountHere(bot) || bot->HasMountedAura() || bot->isMoving())
                 return false;
 
-            // First, scan bot's learned spells for the fastest ground mount
-            uint32 bestSpell = 0;
-            int32 bestSpeed = -1;
-            for (auto const& entry : bot->GetSpellMap())
-            {
-                uint32 const spellId = entry.first;
-                if (!entry.second || entry.second->State == PLAYERSPELL_REMOVED || !entry.second->Active)
-                    continue;
-
-                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                if (!spellInfo || spellInfo->Effects[0].ApplyAuraName != SPELL_AURA_MOUNTED || spellInfo->IsPassive())
-                    continue;
-
-                if (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
-                    spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
-                    spellInfo->Id == 54729)
-                    continue;
-
-                int32 const speed = std::max(spellInfo->Effects[1].BasePoints, spellInfo->Effects[2].BasePoints);
-                if (speed > bestSpeed)
-                {
-                    bestSpeed = speed;
-                    bestSpell = spellId;
-                }
-            }
-
-            if (bestSpell != 0)
+            // First, the fastest ground mount among the bot's learned spells
+            if (uint32 const bestSpell = LifeMotion::GroundMountSpell(bot))
             {
                 bot->CastSpell(bot, bestSpell, true);
                 return true;
@@ -267,7 +236,7 @@ namespace CityLife
             {
                 bot->ClearUnitState(UNIT_STATE_CHASE | UNIT_STATE_FOLLOW);
                 bot->GetMotionMaster()->Clear();
-                bot->GetMotionMaster()->MovePoint(0, x, y, z);
+                LifeMotion::WalkTo(bot, x, y, z);
             }
         }
 
