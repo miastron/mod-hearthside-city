@@ -288,10 +288,17 @@ SELECT h.id, 'GS_CrystalLake_Fish', 'dock', 1, -9432.98, 147.82, 56.40, 1.77, 4,
 
 -- Duel Ring POIs (spectator stands)
 INSERT IGNORE INTO `city_life_spot` (`hub_id`, `name`, `category`, `enabled`, `x`, `y`, `z`, `o`, `radius`, `weight`, `poi_type`, `district`, `partner_spot_id`)
-SELECT h.id, 'SWGate_DuelRing_1', 'duel', 1, -9126.38, 351.36, 93.62, 0.58, 6, 100, 9, 'GateDuelRing', 0 FROM `city_life_hub` h WHERE h.name='StormwindGate';
+SELECT h.id, 'SWGate_DuelRing_1', 'duel', 1, -9102.79, 337.10, 94.26, 0.58, 6, 100, 9, 'GateDuelRing', 0 FROM `city_life_hub` h WHERE h.name='StormwindGate';
 
 INSERT IGNORE INTO `city_life_spot` (`hub_id`, `name`, `category`, `enabled`, `x`, `y`, `z`, `o`, `radius`, `weight`, `poi_type`, `district`, `partner_spot_id`)
-SELECT h.id, 'SWGate_DuelRing_2', 'duel', 1, -9108.68, 316.85, 93.39, 1.33, 6, 100, 9, 'GateDuelRing', 0 FROM `city_life_hub` h WHERE h.name='StormwindGate';
+SELECT h.id, 'SWGate_DuelRing_2', 'duel', 1, -9085.09, 302.59, 94.03, 1.33, 6, 100, 9, 'GateDuelRing', 0 FROM `city_life_hub` h WHERE h.name='StormwindGate';
+
+-- PvP's StormwindDuel ground moved off the road onto the grass (2026-10-15); its spectator stands
+-- move with it, by the same offset. Only a stand still on its previous seed point moves.
+UPDATE `city_life_spot` SET `x`=-9102.79, `y`=337.10, `z`=94.26
+  WHERE `name`='SWGate_DuelRing_1' AND ABS(`x`+9126.38)<0.05 AND ABS(`y`-351.36)<0.05;
+UPDATE `city_life_spot` SET `x`=-9085.09, `y`=302.59, `z`=94.03
+  WHERE `name`='SWGate_DuelRing_2' AND ABS(`x`+9108.68)<0.05 AND ABS(`y`-316.85)<0.05;
 
 INSERT IGNORE INTO `city_life_spot` (`hub_id`, `name`, `category`, `enabled`, `x`, `y`, `z`, `o`, `radius`, `weight`, `poi_type`, `district`, `partner_spot_id`)
 SELECT h.id, 'ORGGate_DuelRing_1', 'duel', 1, 1276.26, -4400.97, 26.32, 0.41, 6, 100, 9, 'GateDuelRing', 0 FROM `city_life_hub` h WHERE h.name='OrgrimmarGate';
